@@ -1,0 +1,6 @@
+name = "email-marketing-send"
+main = "worker/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+# All credentials and sender identity are injected as runtime secrets by GitHub Actions.
+# No database, KV namespace or durable storage is used.
