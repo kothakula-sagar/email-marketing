@@ -1,0 +1,11 @@
+{
+  "name": "mailpilot-email-marketing",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Static localStorage email outreach workspace with secure opt-in sending worker",
+  "scripts": {
+    "test": "node --test",
+    "serve": "npx serve site"
+  }
+}
