@@ -140,7 +140,7 @@
     return '<div class="grid two">' +
       '<section class="card"><div class="row between"><h3 style="margin:0">Import CRM customers</h3><span class="crm-tag">CSV / Excel</span></div>' +
         '<p class="help">Upload a CSV or Excel export from the ABRA Logistics CRM. Supported fields: Import Code, Name, Email, Mobile, Company, Source, Email Status, Consent. Old unsubscribe statuses stay blocked. A CRM “Subscribed” field alone does not prove marketing consent.</p>' +
-        '<div class="file-picker" style="margin-top:16px"><label for="csvFile"><strong>Choose customer file</strong></label><p class="help">.csv / .xlsx / .xls • up to 10,000 customers</p><input id="csvFile" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Choose CRM customer export"></div>' +
+        '<div class="file-picker" style="margin-top:16px"><label for="csvFile"><strong>Choose customer file</strong></label><p class="help">.csv / .xlsx • up to 10,000 customers</p><input id="csvFile" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Choose CRM customer export"></div>' +
         '<div class="field" style="margin-top:16px"><label for="csvPaste">Or paste CSV rows</label><textarea id="csvPaste" class="textarea" rows="4" placeholder="Name,Email,Mobile,Company,Source,Consent&#10;Priya,priya@example.com,9876543210,Acme,Lead,no"></textarea></div>' +
         '<div class="row">' + makeButton("import-csv", "Import customers", "primary") + makeButton("sample-csv", "CRM sample CSV", "secondary") + '</div></section>' +
       '<section class="card"><h3 style="margin-top:0">Add customer</h3>' +
@@ -416,10 +416,14 @@
       let raw = pasted;
       if (!raw && file) {
         if (/\.(xlsx|xls)$/i.test(file.name)) {
-          if (!window.XLSX) throw Error("Excel reader unavailable. Connect to the internet or export a CSV from the CRM.");
-          const workbook = window.XLSX.read(await file.arrayBuffer(), {type:"array",cellDates:false});
-          if (!workbook.SheetNames.length) throw Error("Excel workbook is empty.");
-          raw = window.XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
+          if (!/\.xlsx$/i.test(file.name)) throw Error("Legacy .xls files are not supported. Save the file as .xlsx or CSV first.");
+          const response = await fetch("/api/parse-xlsx",{
+            method:"POST",headers:{"Content-Type":"application/octet-stream","X-Abra-Local":"1"},
+            body:await file.arrayBuffer(),cache:"no-store"
+          });
+          const result=await response.json().catch(()=>({}));
+          if(!response.ok) throw Error(result.error || "Excel parsing failed.");
+          raw=result.csv;
         } else raw = await file.text();
       }
       const {list, invalid} = parseContacts(raw);
@@ -551,64 +555,89 @@
     save(); updatePreview();
   }
   function sleep(ms) {return new Promise(resolve => setTimeout(resolve, ms));}
+  async function refreshSmtpStatus(notify=false) {
+    try {
+      const response=await fetch("/api/health",{cache:"no-store"});
+      if(!response.ok) throw Error("Local server unavailable.");
+      smtpStatus=await response.json();
+      if (notify) toast(smtpStatus.configured ? "Local SMTP settings found. Check connection to verify the password." : "Local SMTP not configured. Update .env and restart npm start.",!smtpStatus.configured);
+      const here=page;
+      if(here==="send" || here==="settings") render();
+      else {
+        $("#endpointDot").className="dot"+(smtpStatus.configured?" on":"");
+        $("#endpointStatus").textContent=smtpStatus.configured?"SMTP configured":"SMTP setup required";
+      }
+    } catch (_) {
+      smtpStatus={configured:false};
+      if(notify) toast("Local SMTP server not reachable. Run npm start first.",true);
+    }
+  }
+  async function callLocalSmtp(route,label) {
+    try {
+      const response=await fetch(route,{method:"POST",headers:{"Content-Type":"application/json","X-Abra-Local":"1"},body:"{}",cache:"no-store"});
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok) throw Error(result.error || "SMTP request failed.");
+      toast(result.message || (label+" succeeded"+(result.to?" for "+result.to:"")+"."));
+      await refreshSmtpStatus(false);
+    }catch(e){toast(e.message || "SMTP request failed.",true);}
+  }
+  function verifySmtp(){return callLocalSmtp("/api/test-smtp","SMTP connection");}
+  function sendTestEmail() {
+    if(!confirm("Send one real test email to the TEST_EMAIL address in your local .env (or SMTP_USER if blank)?")) return;
+    return callLocalSmtp("/api/test-email","Test email accepted by SMTP");
+  }
   async function startSending() {
     if (running) return;
-    const ready = eligible();
-    if (!ready.length) return toast("No permission-confirmed unsent contacts for this campaign.", true);
-    const endpoint = data.settings.endpoint.trim();
-    if (!/^https:\/\/[a-z0-9.-]+(?::\d+)?(?:\/.*)?$/i.test(endpoint)) return toast("Configure a valid HTTPS Worker /send URL in Settings.", true);
-    if (!data.settings.company.trim() || !data.settings.address.trim() || !validEmail(data.settings.senderEmail) || !validEmail(data.settings.optOutEmail)) {
-      return toast("Complete company, address, sender email and unsubscribe email in Settings.", true);
-    }
-    const access = $("#sendAccessToken").value.trim();
-    if (!access) return toast("Enter the send passphrase. It is never saved in your browser.", true);
-    if (!$("#confirmPermission").checked) return toast("Confirm recipient permission and suppression review first.", true);
-    const batch = ready.slice(0, MAX_RUN);
-    if (!confirm("Send " + batch.length + " marketing emails, one every " + SEND_INTERVAL/1000 + " seconds? This is a real send. Continue?")) return;
-    running = true; stopRequested = false;
-    progress = {done:0,total:batch.length,accepted:0,failed:0};
+    if(!smtpStatus?.configured) return toast("Complete SMTP settings in your local .env, restart npm start and test the connection.",true);
+    const ready=eligible();
+    if(!ready.length) return toast("No consent-confirmed unsent customers for this campaign.",true);
+    if(!$("#confirmPermission")?.checked) return toast("Confirm customer permission and opt-out review first.",true);
+    const batch=ready.slice(0,MAX_RUN);
+    if(!confirm("This will send "+batch.length+" real emails from your local SMTP mailbox, spaced at least "+(SEND_INTERVAL/1000)+" seconds apart. Are you sure these customers opted in?")) return;
+    running=true;stopRequested=false;
+    progress={done:0,total:batch.length,accepted:0,failed:0};
     render();
-    for (const contact of batch) {
-      if (stopRequested) break;
-      const payload = {
+    for(const contact of batch){
+      if(stopRequested) break;
+      const payload={
         to:contact.email,
         subject:replaceTokens(data.campaign.subject,contact,false),
-        html:htmlEmail(contact, false),
-        text:plainBody(contact, false),
+        html:htmlEmail(contact,false),
+        text:plainBody(contact,false),
         consentConfirmed:true
       };
-      let outcome = "failed", errorText = "", providerId = "";
+      let outcome="failed",errorText="",providerId="";
       try {
-        const response = await fetch(endpoint, {
+        const response=await fetch("/api/send",{
           method:"POST",
-          headers:{"Content-Type":"application/json","Authorization":"Bearer " + access},
-          body:JSON.stringify(payload),
-          cache:"no-store"
+          headers:{"Content-Type":"application/json","X-Abra-Local":"1"},
+          body:JSON.stringify(payload),cache:"no-store"
         });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          errorText = String(result.error || "HTTP " + response.status).slice(0,180);
-          if ([401,403,429].includes(response.status)) stopRequested = true;
-        } else {
-          outcome = "accepted";
-          providerId = String(result.id || "").slice(0,160);
+        const result=await response.json().catch(()=>({}));
+        if(!response.ok){
+          errorText=String(result.error||"HTTP "+response.status).slice(0,200);
+          if([429,403,503].includes(response.status)) stopRequested=true;
+        }else{
+          outcome="accepted";
+          providerId=String(result.id||"").slice(0,180);
         }
-      } catch (e) {errorText = String(e.message || "Network request failed").slice(0,180); stopRequested = true;}
+      }catch(e){errorText=String(e.message||"SMTP request failed").slice(0,180);stopRequested=true;}
       data.logs.push({at:new Date().toISOString(),email:contact.email,campaignId:data.campaign.id,
         campaignName:data.campaign.name,result:outcome,error:errorText,providerId});
-      data.logs = data.logs.slice(-2000);
+      data.logs=data.logs.slice(-2000);
       save();
       progress.done++;
-      if (outcome === "accepted") progress.accepted++; else progress.failed++;
+      if(outcome==="accepted") progress.accepted++;else progress.failed++;
       render();
-      if (!stopRequested && progress.done < batch.length) await sleep(SEND_INTERVAL);
+      if(!stopRequested && progress.done<batch.length) await sleep(SEND_INTERVAL);
     }
-    running = false;
-    const endedEarly = stopRequested;
-    stopRequested = false;
+    running=false;
+    const endedEarly=stopRequested;
+    stopRequested=false;
     render();
-    toast("Send run complete: " + progress.accepted + " accepted, " + progress.failed + " failed." + (endedEarly ? " Stopped early." : ""));
+    toast("Finished: "+progress.accepted+" accepted by SMTP, "+progress.failed+" failed."+(endedEarly?" Stopped early.":""));
   }
+  
   document.addEventListener("click", (event) => {
     const nav = event.target.closest("[data-nav]");
     if (nav) {go(nav.dataset.nav); return;}
