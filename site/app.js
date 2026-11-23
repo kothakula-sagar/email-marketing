@@ -210,7 +210,7 @@
   function replaceTokens(text, contact, html) {
     const ctx = {
       name: contact.name || "there", first_name: (contact.name || "there").split(" ")[0],
-      company: contact.company || "your team", email: contact.email || "",
+      company: contact.company || "your team", email: contact.email || "", phone:contact.phone || "", source:contact.source || "",
       sender_name: data.settings.senderName || data.settings.company || "Our team",
       website: data.settings.website || ""
     };
@@ -345,54 +345,72 @@
   function fieldKey(s) {return String(s || "").toLowerCase().trim().replace(/[\s-]+/g,"_").replace(/[^a-z0-9_]/g,"");}
   function parseContacts(raw) {
     const rows = parseCSV(raw);
-    if (rows.length < 2) throw Error("Include a header row and at least one contact.");
+    if (rows.length < 2) throw Error("Include a header row and at least one customer.");
     const header = rows.shift().map(fieldKey);
-    const emailAt = header.findIndex(h => ["email","email_address","emailid","email_id","e_mail"].includes(h));
-    const nameAt = header.findIndex(h => ["name","full_name","customer_name","contact_name","first_name"].includes(h));
-    const companyAt = header.findIndex(h => ["company","company_name","business","business_name","organization"].includes(h));
-    const consentAt = header.findIndex(h => ["consent","marketing_consent","subscribed","opt_in","permission","status"].includes(h));
-    if (emailAt < 0) throw Error("CSV must include an 'email' header.");
+    const indexOf = keys => header.findIndex(h => keys.includes(h));
+    const emailAt = indexOf(["email","email_address","emailid","email_id","e_mail"]);
+    const nameAt = indexOf(["name","full_name","customer_name","contact_name","first_name"]);
+    const companyAt = indexOf(["company","company_name","business","business_name","organization"]);
+    const phoneAt = indexOf(["mobile","phone","phone_number","phonenum","mobile_number","contact_number","contact"]);
+    const sourceAt = indexOf(["source","lead_source","customer_source"]);
+    const consentAt = indexOf(["consent","marketing_consent","opt_in","permission","permission_confirmed"]);
+    const statusAt = indexOf(["email_status","emailstatus","marketing_status","marketingstatus","status","subscribed"]);
+    if (emailAt < 0) throw Error("CRM file must include an Email column.");
     const list = [];
     let invalid = 0;
     for (const row of rows) {
       const email = (row[emailAt] || "").trim().toLowerCase();
       if (!validEmail(email)) {invalid++; continue;}
-      const statusValue = consentAt < 0 ? "" : String(row[consentAt] || "").trim().toLowerCase();
-      const status = ["yes","true","1","opted_in","opt_in","subscribed","consented","permission_confirmed"].includes(fieldKey(statusValue)) ? "consented" :
-        ["unsubscribed","opted_out","opt_out","blocked","do_not_contact"].includes(fieldKey(statusValue)) ? "unsubscribed" : "review";
+      const consent = fieldKey(consentAt < 0 ? "" : row[consentAt]);
+      const emailStatus = fieldKey(statusAt < 0 ? "" : row[statusAt]);
+      const optedOut = ["unsubscribed","not_interested","opted_out","opt_out","blocked","do_not_contact"].includes(emailStatus) ||
+        ["unsubscribed","not_interested","opted_out","opt_out","blocked","do_not_contact"].includes(consent);
+      // A default “Subscribed” CRM field does not itself prove marketing opt-in.
+      const optedIn = ["yes","true","1","opted_in","opt_in","consented","permission_confirmed"].includes(consent);
+      const status = optedOut ? "unsubscribed" : optedIn ? "consented" : "review";
       const extras = {};
-      header.forEach((h,i) => {if (h && ![emailAt,nameAt,companyAt,consentAt].includes(i)) extras[h] = row[i] || "";});
-      list.push({email, name: nameAt < 0 ? "" : row[nameAt] || "", company: companyAt < 0 ? "" : row[companyAt] || "", status, extras, createdAt:new Date().toISOString()});
+      header.forEach((h,i) => {if (h && ![emailAt,nameAt,companyAt,phoneAt,sourceAt,consentAt,statusAt].includes(i)) extras[h] = row[i] || "";});
+      list.push({email, name: nameAt < 0 ? "" : row[nameAt] || "", company: companyAt < 0 ? "" : row[companyAt] || "",
+        phone:phoneAt < 0 ? "" : row[phoneAt] || "", source:sourceAt < 0 ? "Import" : (row[sourceAt] || "Import"),
+        status, extras, createdAt:new Date().toISOString()});
     }
     return {list, invalid};
   }
   async function importCSV() {
     const file = $("#csvFile") && $("#csvFile").files[0];
     const pasted = $("#csvPaste") && $("#csvPaste").value.trim();
-    if (!file && !pasted) return toast("Select a CSV file or paste CSV rows.", true);
+    if (!file && !pasted) return toast("Select a CRM customer file or paste CSV rows.", true);
     try {
-      if (file && file.size > 3 * 1024 * 1024) throw Error("CSV must be under 3 MB.");
-      const raw = pasted || await file.text();
+      if (file && file.size > 5 * 1024 * 1024) throw Error("File must be under 5 MB.");
+      let raw = pasted;
+      if (!raw && file) {
+        if (/\.(xlsx|xls)$/i.test(file.name)) {
+          if (!window.XLSX) throw Error("Excel reader unavailable. Connect to the internet or export a CSV from the CRM.");
+          const workbook = window.XLSX.read(await file.arrayBuffer(), {type:"array",cellDates:false});
+          if (!workbook.SheetNames.length) throw Error("Excel workbook is empty.");
+          raw = window.XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
+        } else raw = await file.text();
+      }
       const {list, invalid} = parseContacts(raw);
-      if (data.contacts.length + list.length > MAX_CONTACTS * 2) throw Error("Too many contacts. Keep under 10,000.");
-      const map = new Map(data.contacts.map(c => [c.email, c]));
-      let added = 0, updated = 0;
+      if (data.contacts.length + list.length > MAX_CONTACTS * 2) throw Error("Too many rows. Keep under 10,000 customers.");
+      const map = new Map(data.contacts.map(c => [c.email,c]));
+      let added=0, updated=0;
       for (const contact of list) {
         const old = map.get(contact.email);
         if (old) {
-          // An opt-out can NEVER be overwritten by reimporting a list.
-          map.set(contact.email, {...old, name: contact.name || old.name, company: contact.company || old.company,
+          map.set(contact.email,{...old,name:contact.name || old.name,company:contact.company || old.company,
+            phone:contact.phone || old.phone || "",source:contact.source || old.source || "Import",
             extras:{...(old.extras || {}),...contact.extras},
-            status: old.status === "unsubscribed" || contact.status === "unsubscribed" ? "unsubscribed" :
+            status:old.status === "unsubscribed" || contact.status === "unsubscribed" ? "unsubscribed" :
               old.status === "consented" || contact.status === "consented" ? "consented" : "review"});
           updated++;
-        } else {map.set(contact.email, contact); added++;}
+        } else {map.set(contact.email,contact);added++;}
       }
-      if (map.size > MAX_CONTACTS) throw Error("Contact limit is 10,000.");
+      if (map.size > MAX_CONTACTS) throw Error("Customer limit is 10,000.");
       data.contacts = [...map.values()];
-      save(); render();
-      toast("Imported " + added + " new contacts; updated " + updated + ". " + invalid + " invalid rows skipped.");
-    } catch (error) {toast(error.message || "CSV import failed.", true);}
+      save();render();
+      toast("Imported " + added + " new customers; updated " + updated + ". " + invalid + " invalid rows skipped.");
+    } catch (error) {toast(error.message || "Customer import failed.",true);}
   }
   function addContact() {
     const email = ($("#newEmail").value || "").trim().toLowerCase();
@@ -402,7 +420,7 @@
     const status = $("#newStatus").value;
     if (status === "consented" && !confirm("Confirm this person explicitly agreed to receive marketing emails?")) return;
     data.contacts.unshift({email, name:$("#newName").value.trim(), company:$("#newCompany").value.trim(),
-      status,extras:{},createdAt:new Date().toISOString()});
+      phone:$("#newPhone").value.trim(), source:$("#newSource").value, status,extras:{},createdAt:new Date().toISOString()});
     save(); render(); toast("Contact added.");
   }
   function findContact(email) {return data.contacts.find(c => c.email === email);}
@@ -433,9 +451,9 @@
   }
   function exportCSV() {
     const extras = [...new Set(data.contacts.flatMap(c => Object.keys(c.extras || {})))].sort();
-    const rows = [["name","email","company","status",...extras],
-      ...data.contacts.map(c => [c.name,c.email,c.company,c.status,...extras.map(x => (c.extras || {})[x] || "")])];
-    downloadFile("mailpilot-contacts.csv", toCSV(rows), "text/csv;charset=utf-8");
+    const rows = [["Name","Email","Mobile","Company","Source","Email Status","Consent",...extras],
+      ...data.contacts.map(c => [c.name,c.email,c.phone || "",c.company,c.source || "",c.status === "unsubscribed" ? "Unsubscribed" : "Subscribed",c.status === "consented" ? "yes" : c.status === "unsubscribed" ? "unsubscribed" : "no",...extras.map(x => (c.extras || {})[x] || "")])];
+    downloadFile("ABRA_Logistics_Customers.csv", toCSV(rows), "text/csv;charset=utf-8");
   }
   function exportLog() {
     const rows = [["date","email","campaign","result","provider_id","error"],
@@ -449,15 +467,16 @@
       const raw = JSON.parse(await file.text());
       if (!raw || !Array.isArray(raw.contacts) || !raw.campaign || !raw.settings || !Array.isArray(raw.logs)) throw Error("Not a MailPilot backup.");
       if (raw.contacts.length > MAX_CONTACTS) throw Error("Too many contacts in backup.");
+      const suppressedBefore = data.contacts.filter(c => c.status === "unsubscribed");
       if (!confirm("Restore this backup? Existing contacts and drafts will be replaced, but current opt-outs will remain suppressed.")) return;
       const optouts = new Set(data.contacts.filter(x => x.status === "unsubscribed").map(x => x.email));
       data = {version:1, contacts:raw.contacts.filter(x => x && validEmail(x.email)).map(c =>
         ({...c, status:optouts.has(c.email) || c.status === "unsubscribed" ? "unsubscribed" :
           c.status === "consented" ? "consented" : "review"})),
-        campaign:{...defaultState().campaign,...raw.campaign}, settings:{...defaultState().settings,...raw.settings}, logs:raw.logs.slice(-2000)};
+        campaign:{...defaultState().campaign,...raw.campaign}, campaigns:Array.isArray(raw.campaigns) ? raw.campaigns : [], settings:{...defaultState().settings,...raw.settings}, logs:raw.logs.slice(-2000)};
       for (const old of optouts) if (!data.contacts.some(c => c.email === old)) {
-        const original = findContact(old);
-        data.contacts.push({email:old,name:original?.name || "",company:original?.company || "",status:"unsubscribed",extras:{}});
+        const original = suppressedBefore.find(c => c.email === old);
+        data.contacts.push(original || {email:old,name:"",company:"",phone:"",source:"Backup",status:"unsubscribed",extras:{}});
       }
       save(); render(); toast("Backup restored. Existing unsubscribed emails were preserved.");
     } catch (error) {toast(error.message || "Could not restore this backup.", true);}
@@ -562,7 +581,7 @@
     if (action === "export-csv") return exportCSV();
     if (action === "export-log") return exportLog();
     if (action === "export-backup") return downloadFile("mailpilot-backup-" + new Date().toISOString().slice(0,10) + ".json",JSON.stringify({...data,backedUpAt:new Date().toISOString()},null,2),"application/json;charset=utf-8");
-    if (action === "sample-csv") return downloadFile("sample-contacts.csv",toCSV([["name","email","company","consent","city"],["Priya Sharma","priya@example.com","Example Industries","no","Bengaluru"],["Ravi Kumar","ravi@example.com","Sample Company","yes","Chennai"]]),"text/csv;charset=utf-8");
+    if (action === "sample-csv") return downloadFile("ABRA_Logistics_Customer_Import.csv",toCSV([["Import Code","Name","Email","Mobile","Company","Source","Email Status","Consent"],["","Priya Sharma","priya@example.com","9876543210","Example Industries","Lead","Subscribed","no"],["","Ravi Kumar","ravi@example.com","9123456789","Sample Company","Referral","Subscribed","yes"]]),"text/csv;charset=utf-8");
     if (action === "remove-active") {
       if (confirm("Remove all active and review contacts? Unsubscribed contacts will be kept as a suppression list.")) {
         data.contacts = data.contacts.filter(c => c.status === "unsubscribed");save();render();toast("Active contacts removed. Opt-outs preserved.");
