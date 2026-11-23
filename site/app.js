@@ -256,22 +256,35 @@
   }
   function sendView() {
     const ready = eligible().length;
-    const c = counts();
+    const c=counts();
+    const smtp = smtpStatus;
+    const badge = smtp?.configured ? '<span class="status consented">SMTP configured</span>' : '<span class="status review">SMTP setup required</span>';
     return '<div class="grid two">' +
-      '<section class="card"><h3 style="margin:0 0 12px">📨 Individual cold outreach</h3><p class="muted">Use the Contacts tab to review a person and open a personalized email in your email app. This does not automate unsolicited bulk sending.</p>' +
-      '<div class="note">No API key or sender passphrase is needed for manual emails. Your own mail client handles delivery. Contacts marked unsubscribed cannot be approached.</div><div style="margin-top:17px">' + makeButton("go-contacts", "Open contact list", "secondary") + '</div></section>' +
-      '<section class="card"><h3 style="margin:0 0 12px">✅ Opt-in campaign sending</h3><p class="muted">This sends one message at a time, using the endpoint you deploy. Only contacts you marked permission confirmed are eligible.</p>' +
-      '<div class="grid two"><div class="ghost-box"><div class="muted small-text">Ready for this campaign</div><div style="font-size:29px;font-weight:800">' + ready + '</div></div>' +
-      '<div class="ghost-box"><div class="muted small-text">Excluded</div><div style="font-size:29px;font-weight:800">' + (c.total - ready) + '</div></div></div></section></div>' +
-      '<div class="section-heading"><h2>Send options</h2><span class="pill">Maximum ' + MAX_RUN + ' per run · ' + SEND_INTERVAL / 1000 + 's interval</span></div>' +
-      '<div class="split"><section class="card"><div class="field"><label>Campaign</label><input class="input" value="' + esc(data.campaign.name) + '" readonly></div>' +
-      '<div class="field"><label for="sendAccessToken">Send passphrase</label><input class="input" id="sendAccessToken" type="password" autocomplete="off" placeholder="Your SEND_ACCESS_TOKEN from GitHub Environment"><p class="help">Required to protect the endpoint against unauthorized use. Never commit or save this token to localStorage.</p></div>' +
-      '<label class="checkrow"><input type="checkbox" id="confirmPermission"><span>I confirm that these contacts explicitly opted in to marketing emails, my email contains accurate identity and mailing details, and I have checked suppression requests.</span></label><br>' +
-      '<div class="row">' + makeButton("start-send", "Start permission-based send", "primary", running ? "disabled" : "") + makeButton("stop-send", "Stop after current email", "danger", running ? "" : "disabled") + '</div>' +
-      '<div id="sendNote" class="help" style="margin-top:12px">' + (data.settings.endpoint ? "Endpoint configured. Ready to verify settings." : "Set an HTTPS worker endpoint in Settings before automated sending.") + '</div>' +
-      '<hr><div class="note warning">No database means no automatic inbound unsubscribe processing, global suppression sync or reliable server-side send-rate limits. Check your opt-out mailbox and mark unsubscribed contacts before each campaign.</div></section>' +
-      '<section class="card"><div class="row between"><h3 style="margin:0">Send progress</h3><span class="pill" id="progressLabel">Ready</span></div><p class="help">“Accepted” means accepted by your provider, not delivered or opened.</p>' +
-      '<div class="progress-track" style="margin:24px 0 12px"><div class="progress-fill" id="progressFill"></div></div><div class="grid two"><div><span class="muted small-text">Accepted</span><div id="progressAccepted" style="font-size:26px;font-weight:800">0</div></div><div><span class="muted small-text">Failed</span><div id="progressFailed" style="font-size:26px;font-weight:800">0</div></div></div><hr><div class="row between"><b>Recent send history</b>' + makeButton("export-log", "Export log", "secondary small") + '</div>' + logsHtml(9) + '</section></div>';
+      '<section class="card"><h3 style="margin:0 0 12px">✉ Mailbox connection</h3><p class="muted">Send through <b>support@abra-logistic.com</b> with the SMTP details in your local <code>.env</code> file. Nothing is hosted on GitHub or Cloudflare.</p>' +
+      '<div class="row" style="margin:15px 0">' + badge + '<span class="pill">' + esc(smtp?.host || "SMTP host not configured") + (smtp?.port ? ":"+smtp.port : "") + '</span></div>' +
+      '<div class="row">' + makeButton("verify-smtp", "Check SMTP connection", "secondary small") + makeButton("test-email", "Send test email", "primary small") + '</div>' +
+      '<p class="help">Connection check logs in to SMTP but does not send. Test email sends one real email to the address set as TEST_EMAIL in your local .env (or SMTP_USER by default).</p>' +
+      '<div class="note warning" style="margin-top:16px"><b>Delivery warning:</b> Your Roundcube screenshot shows multiple mail-delivery failure notices. Before a customer campaign, inspect those bounce messages and the hosting provider’s mail-delivery reports. SMTP acceptance is not delivery.</div></section>' +
+      '<section class="card"><h3 style="margin:0 0 12px">✅ Campaign recipients</h3>' +
+      '<p class="muted">Only customers marked permission confirmed are eligible for automated sending. Unsubscribed addresses and already accepted recipients for this campaign are excluded.</p>' +
+      '<div class="grid two"><div class="ghost-box"><div class="muted small-text">Eligible to send</div><div style="font-size:29px;font-weight:800">' + ready + '</div></div>' +
+      '<div class="ghost-box"><div class="muted small-text">Excluded</div><div style="font-size:29px;font-weight:800">' + (c.total-ready) + '</div></div></div>' +
+      '<div style="margin-top:15px">' + makeButton("go-contacts", "View customer list", "secondary small") + '</div></section></div>' +
+      '<div class="section-heading"><h2>Campaign sending</h2><span class="pill">Max ' + MAX_RUN + ' per run · at least ' + SEND_INTERVAL / 1000 + ' seconds between sends</span></div>' +
+      '<div class="split"><section class="card">' +
+      '<div class="field"><label>Campaign name</label><input class="input" value="' + esc(data.campaign.name) + '" readonly></div>' +
+      '<div class="field"><label>Subject</label><input class="input" value="' + esc(data.campaign.subject) + '" readonly></div>' +
+      '<label class="checkrow"><input type="checkbox" id="confirmPermission"><span>I have verified that these specific customers have agreed to receive marketing messages, checked the unsubscribe requests and delivery errors, and previewed the email content.</span></label><br>' +
+      '<div class="row">' + makeButton("start-send", "Start email campaign", "primary", running?"disabled":"") +
+        makeButton("stop-send", "Stop after current email", "danger",running?"":"disabled") + '</div>' +
+      '<div class="help" id="sendNote" style="margin-top:12px">The Node server reads the local .env automatically. No passwords or mail keys are entered or saved in this page.</div>' +
+      '<hr><div class="note warning">Without a database, incoming unsubscribe replies and bounced addresses must be handled manually in Customers. Server sending limits are temporary safety caps, not a replacement for your hosting provider limits.</div></section>' +
+      '<section class="card"><div class="row between"><h3 style="margin:0">Send progress</h3><span class="pill" id="progressLabel">Ready</span></div>' +
+      '<p class="help">“Accepted” means the SMTP server accepted the message. It may still bounce later. The webmail Sent folder may not automatically show SMTP API sends.</p>' +
+      '<div class="progress-track" style="margin:24px 0 12px"><div class="progress-fill" id="progressFill"></div></div>' +
+      '<div class="grid two"><div><span class="muted small-text">Accepted</span><div id="progressAccepted" style="font-size:26px;font-weight:800">0</div></div>' +
+      '<div><span class="muted small-text">Failed</span><div id="progressFailed" style="font-size:26px;font-weight:800">0</div></div></div><hr>' +
+      '<div class="row between"><b>Recent send history</b>' + makeButton("export-log", "Export log", "secondary small") + '</div>' + logsHtml(9) + '</section></div>';
   }
   function updateProgress() {
     if (!$("#progressFill")) return;
@@ -293,32 +306,49 @@
     ).join("") + '</div>';
   }
   function settingsView() {
-    const s = data.settings;
-    return '<div class="split"><section class="card"><h3 style="margin-top:0">Sender details</h3><p class="help">These details appear in message previews. Your serverless endpoint still enforces the actual verified sending address.</p><hr>' +
-      field("Business or company name", "settings.company", s.company) +
-      field("Your name", "settings.senderName", s.senderName) +
-      field("Verified sender email", "settings.senderEmail", s.senderEmail) +
-      field("Reply or unsubscribe email", "settings.optOutEmail", s.optOutEmail) +
-      field("Business postal address", "settings.address", s.address) +
+    const s=data.settings;
+    const smtp=smtpStatus;
+    return '<div class="split"><section class="card"><h3 style="margin-top:0">Local SMTP mailbox settings</h3>' +
+      '<p class="muted">Your friend should create a file named <code>.env</code> beside <code>package.json</code> on their own computer. Never upload their mailbox password to GitHub.</p><hr>' +
+      '<div class="grid two" style="gap:13px">' +
+      '<div class="ghost-box"><div class="muted small-text">Email account</div><b>' + esc(smtp?.from || "Set SMTP_USER in .env") + '</b></div>' +
+      '<div class="ghost-box"><div class="muted small-text">Mail server</div><b>' + esc(smtp?.host || "Not configured") + ':' + esc(smtp?.port || "—") + '</b></div></div>' +
+      '<div class="row" style="margin:16px 0">' +
+      makeButton("refresh-smtp", "Refresh SMTP settings", "secondary small") +
+      makeButton("verify-smtp", "Check connection", "secondary small") +
+      makeButton("test-email", "Send test email", "primary small") + '</div>' +
+      '<div class="note">Open cPanel → Email Accounts → <b>support@abra-logistic.com</b> → Connect Devices. Copy the actual SMTP hostname, port and SSL/TLS settings into .env. The Node server must be restarted after changes.</div>' +
+      '<p class="help">Current test recipient: ' + esc(smtp?.testRecipient || "Not configured") + '. The password is never sent to the browser or stored in localStorage.</p></section>' +
+      '<section class="card"><h3 style="margin-top:0">Campaign preview details</h3><p class="help">These values are only for local preview/personalization. The actual SMTP sender and mandatory footer come from .env.</p><hr>' +
+      field("Company name (preview)", "settings.company", s.company) +
+      field("Sender name (personalization)", "settings.senderName", s.senderName) +
       field("Website (optional)", "settings.website", s.website) +
-      '</section><section class="card"><h3 style="margin-top:0">Secure sending endpoint</h3><p class="muted">Deploy the included Cloudflare Worker using CRM-style Gmail OAuth (or Resend). Credentials stay in Cloudflare secrets deployed from GitHub Environments, never in this website.</p><hr>' +
-      field("Worker endpoint URL", "settings.endpoint", s.endpoint, "input", "For example https://email-marketing-send.your-subdomain.workers.dev/send") +
-      '<div class="note warning">Never put Gmail OAuth credentials, a Resend key, or SEND_ACCESS_TOKEN into public website code, a committed .env file or GitHub Pages. Use GitHub Environment secrets to deploy the Worker.</div><br>' +
-      makeButton("go-guide", "View deployment steps", "secondary") +
-      '<hr><h3>Local data backup</h3><div class="row">' + makeButton("export-backup", "Export backup", "secondary small") +
-      '<label class="btn secondary small" for="restoreBackup">Restore JSON <input id="restoreBackup" type="file" accept=".json,application/json" style="display:none"></label></div>' +
-      '<p class="help">Backups contain personal contact information. Keep them private. Restoring a backup merges existing opt-outs to avoid accidentally re-enabling them.</p></section></div>';
+      '<div class="note warning">Actual FROM address: <b>' + esc(smtp?.from || "Not configured") + '</b>. Update SENDER_EMAIL, COMPANY_NAME, BUSINESS_ADDRESS and UNSUBSCRIBE_EMAIL in the local .env file—not here.</div>' +
+      '<hr><h3>Customer and campaign backup</h3><div class="row">' +
+      makeButton("export-backup","Download JSON backup","secondary small") +
+      '<label class="btn secondary small" for="restoreBackup">Restore backup <input id="restoreBackup" type="file" accept=".json,application/json" style="display:none"></label></div>' +
+      '<p class="help">Backups include customer emails. Keep them private. Previously unsubscribed addresses are preserved on restore.</p></section></div>';
   }
   function guideView() {
-    return '<div class="grid two"><section class="card"><h3 style="margin-top:0">Use it in five minutes</h3><ol class="guide-list"><li>Open <b>Contacts</b> and import a CSV with email, name, company and optional consent columns.</li><li>Use <b>Needs review</b> for unverified/cold contacts. Personalized one-to-one emails open in your own mail client.</li><li>Only mark recipients <b>Permission confirmed</b> after confirming marketing consent.</li><li>Write in <b>Composer</b>, preview personalized subject and message, then review <b>Send center</b>.</li><li>Download a backup after each session; localStorage is not shared between devices.</li></ol><div class="row">' + makeButton("go-contacts", "Import contacts", "primary small") + makeButton("go-compose", "Write an email", "secondary small") + '</div></section>' +
-      '<section class="card"><h3 style="margin-top:0">API setup</h3><ol class="guide-list"><li>For CRM-style Gmail sending, authorize your Gmail account and obtain its OAuth refresh token; for Resend, verify your domain and SPF/DKIM.</li><li>In GitHub repo → Settings → Environments, create <b>production</b>; set EMAIL_PROVIDER=gmail or resend and add the provider secrets listed in README.</li><li>Run Actions → <b>Deploy mail Worker</b> → Run workflow.</li><li>Copy the resulting Cloudflare Worker URL and add <b>/send</b> in Settings.</li><li>Enter your separate send passphrase in Send center only when ready to send.</li></ol><div class="note">GitHub Pages hosts the frontend; Cloudflare Workers holds private credentials. GitHub Environment secrets do not automatically become secure runtime variables on GitHub Pages.</div></section></div>' +
-      '<div class="section-heading"><h2>FAQs and safety notes</h2></div><div class="card">' +
-      '<details open><summary>Why no automated sending to cold contacts?</summary><p>Many sending providers prohibit unsolicited cold-email campaigns. This app prepares individual outreach in your own email client and reserves the automated API for permission-based contacts, subject to your provider policy and applicable law.</p></details>' +
-      '<details><summary>Where is my imported CSV stored?</summary><p>Only in localStorage for the browser and site origin that imported it. It is not uploaded to a server. Other browsers or devices cannot see it. Clearing site data removes it; exporting a backup is important.</p></details>' +
-      '<details><summary>Can contacts unsubscribe automatically?</summary><p>Without a server database or a durable suppression store, no. Your email contains a reply/mailto opt-out path. Monitor that mailbox and manually mark requests as Unsubscribed in Contacts. Export your suppression list and keep it across imports.</p></details>' +
-      '<details><summary>Are opens, clicks and deliveries tracked?</summary><p>No. Send logs reflect provider API acceptance or request failure only. Open/click pixels and delivery webhooks require extra infrastructure and involve privacy responsibilities.</p></details>' +
-      '<details><summary>Why is a passphrase needed without login?</summary><p>It is not a user account or login flow. It stops strangers from using your publicly reachable Worker as an open email relay. The passphrase is held only in memory for the send operation, not in localStorage.</p></details>' +
-      '</div>';
+    return '<div class="grid two"><section class="card"><h3 style="margin-top:0">Start locally in five steps</h3><ol class="guide-list">' +
+      '<li>Download or clone <b>kothakula-sagar/email-marketing</b> on your computer.</li>' +
+      '<li>Open the project in a terminal and run <code>npm install</code> once.</li>' +
+      '<li>Copy <code>.env.example</code> to <code>.env</code>. Set actual SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and business address.</li>' +
+      '<li>Run <code>npm start</code>, then open <b>http://localhost:3000</b>.</li>' +
+      '<li>In Send center, check SMTP and send one test email. Once that works, import customers and write an email campaign.</li>' +
+      '</ol><div class="note">No account or database. Data lives in the current browser at localhost. Different computers, ports and browsers have different localStorage.</div></section>' +
+      '<section class="card"><h3 style="margin-top:0">Use the website mailbox</h3>' +
+      '<p class="muted">The screenshot is Roundcube Webmail for <b>support@abra-logistic.com</b>. Roundcube is a mail interface; sending from this app uses the same mailbox’s outgoing SMTP service through Node.js.</p>' +
+      '<ol class="guide-list"><li>Find the outgoing server details in cPanel <b>Connect Devices</b> (not just the URL of Roundcube).</li>' +
+      '<li>Set SMTP_PORT=465 and SMTP_SECURE=true for SSL/TLS, <i>if that is what cPanel lists</i>, or use the cPanel supplied settings.</li>' +
+      '<li>Use the mailbox password or the provider-approved mail credential. Do not enter a cPanel dashboard password into this website.</li>' +
+      '<li>If the test fails, check MX/SPF/DKIM/DMARC, mailbox quota, firewall, and bounce reason codes.</li></ol></section></div>' +
+      '<div class="section-heading"><h2>FAQ</h2></div><div class="card">' +
+      '<details open><summary>Does it send from support@abra-logistic.com?</summary><p>Yes, after the mailbox SMTP settings authenticate correctly. The actual sender is SMTP_USER/SENDER_EMAIL from your .env. A successful SMTP request is not a delivery guarantee.</p></details>' +
+      '<details><summary>Are contacts and campaigns saved in a database?</summary><p>No. Customers, subscriptions, campaigns, drafts and send history remain in localStorage for the browser and localhost origin. Use Export backup before changing browsers or clearing site data.</p></details>' +
+      '<details><summary>Will sent messages appear in Roundcube Sent?</summary><p>Not necessarily. SMTP transmits messages but does not save a copy into Roundcube’s IMAP Sent folder. Use the local send log; automatic IMAP Sent-folder copying requires additional configuration.</p></details>' +
+      '<details><summary>How do unsubscribes work?</summary><p>Messages provide a monitored email address for unsubscribe requests. Check that mailbox regularly and manually set those customers to Unsubscribed before the next campaign. Do not re-import opted-out customers as subscribed.</p></details>' +
+      '<details><summary>Can I use this for mass cold emails?</summary><p>The automatic sender only handles verified opt-in recipients. For new business prospects, review individual outreach and comply with the mailbox host’s policies, email laws and any opt-out requests.</p></details></div>';
   }
   function parseCSV(input) {
     const csv = String(input || "").replace(/^\uFEFF/, "");
