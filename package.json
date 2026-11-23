@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Static localStorage email outreach workspace with secure opt-in sending worker",
   "scripts": {
-    "test": "node --test",
+    "test": "node --check site/app.js && node --check worker/index.js && node --test tests/*.test.js",
     "serve": "npx serve site"
   }
 }
