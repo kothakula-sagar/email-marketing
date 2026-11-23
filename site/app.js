@@ -300,9 +300,9 @@
       field("Reply or unsubscribe email", "settings.optOutEmail", s.optOutEmail) +
       field("Business postal address", "settings.address", s.address) +
       field("Website (optional)", "settings.website", s.website) +
-      '</section><section class="card"><h3 style="margin-top:0">Secure sending endpoint</h3><p class="muted">Deploy the included Cloudflare Worker and enter the resulting URL here. Provider credentials live only in Cloudflare Worker secrets, populated by a GitHub Environment workflow.</p><hr>' +
+      '</section><section class="card"><h3 style="margin-top:0">Secure sending endpoint</h3><p class="muted">Deploy the included Cloudflare Worker using CRM-style Gmail OAuth (or Resend). Credentials stay in Cloudflare secrets deployed from GitHub Environments, never in this website.</p><hr>' +
       field("Worker endpoint URL", "settings.endpoint", s.endpoint, "input", "For example https://email-marketing-send.your-subdomain.workers.dev/send") +
-      '<div class="note warning">Never put a Resend API key, SMTP password, or SEND_ACCESS_TOKEN into this website, a public .env file, or GitHub Pages settings. Use GitHub Environment secrets to deploy the Worker.</div><br>' +
+      '<div class="note warning">Never put Gmail OAuth credentials, a Resend key, or SEND_ACCESS_TOKEN into public website code, a committed .env file or GitHub Pages. Use GitHub Environment secrets to deploy the Worker.</div><br>' +
       makeButton("go-guide", "View deployment steps", "secondary") +
       '<hr><h3>Local data backup</h3><div class="row">' + makeButton("export-backup", "Export backup", "secondary small") +
       '<label class="btn secondary small" for="restoreBackup">Restore JSON <input id="restoreBackup" type="file" accept=".json,application/json" style="display:none"></label></div>' +
@@ -310,7 +310,7 @@
   }
   function guideView() {
     return '<div class="grid two"><section class="card"><h3 style="margin-top:0">Use it in five minutes</h3><ol class="guide-list"><li>Open <b>Contacts</b> and import a CSV with email, name, company and optional consent columns.</li><li>Use <b>Needs review</b> for unverified/cold contacts. Personalized one-to-one emails open in your own mail client.</li><li>Only mark recipients <b>Permission confirmed</b> after confirming marketing consent.</li><li>Write in <b>Composer</b>, preview personalized subject and message, then review <b>Send center</b>.</li><li>Download a backup after each session; localStorage is not shared between devices.</li></ol><div class="row">' + makeButton("go-contacts", "Import contacts", "primary small") + makeButton("go-compose", "Write an email", "secondary small") + '</div></section>' +
-      '<section class="card"><h3 style="margin-top:0">API setup</h3><ol class="guide-list"><li>Verify a domain with your email provider and set SPF/DKIM as required.</li><li>In GitHub repo → Settings → Environments, create <b>production</b> and add the secrets listed in README.</li><li>Run Actions → <b>Deploy mail Worker</b> → Run workflow.</li><li>Copy the resulting Cloudflare Worker URL and add <b>/send</b> in Settings.</li><li>Enter your separate send passphrase in Send center only when ready to send.</li></ol><div class="note">GitHub Pages hosts the frontend; Cloudflare Workers holds private credentials. GitHub Environment secrets do not automatically become secure runtime variables on GitHub Pages.</div></section></div>' +
+      '<section class="card"><h3 style="margin-top:0">API setup</h3><ol class="guide-list"><li>For CRM-style Gmail sending, authorize your Gmail account and obtain its OAuth refresh token; for Resend, verify your domain and SPF/DKIM.</li><li>In GitHub repo → Settings → Environments, create <b>production</b>; set EMAIL_PROVIDER=gmail or resend and add the provider secrets listed in README.</li><li>Run Actions → <b>Deploy mail Worker</b> → Run workflow.</li><li>Copy the resulting Cloudflare Worker URL and add <b>/send</b> in Settings.</li><li>Enter your separate send passphrase in Send center only when ready to send.</li></ol><div class="note">GitHub Pages hosts the frontend; Cloudflare Workers holds private credentials. GitHub Environment secrets do not automatically become secure runtime variables on GitHub Pages.</div></section></div>' +
       '<div class="section-heading"><h2>FAQs and safety notes</h2></div><div class="card">' +
       '<details open><summary>Why no automated sending to cold contacts?</summary><p>Many sending providers prohibit unsolicited cold-email campaigns. This app prepares individual outreach in your own email client and reserves the automated API for permission-based contacts, subject to your provider policy and applicable law.</p></details>' +
       '<details><summary>Where is my imported CSV stored?</summary><p>Only in localStorage for the browser and site origin that imported it. It is not uploaded to a server. Other browsers or devices cannot see it. Clearing site data removes it; exporting a backup is important.</p></details>' +
@@ -447,7 +447,7 @@
     setTimeout(() => URL.revokeObjectURL(url), 1500);
   }
   function toCSV(rows) {
-    return "\uFEFF" + rows.map(row => row.map(v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"').join(",")).join("\r\n");
+    return "\uFEFF" + rows.map(row => row.map(v => {let cell = String(v == null ? "" : v); if (/^[\\t\\r\\n ]*[=+@]/.test(cell)) cell = "'" + cell; return '"' + cell.replace(/"/g, '""') + '"';}).join(",")).join("\r\n");
   }
   function exportCSV() {
     const extras = [...new Set(data.contacts.flatMap(c => Object.keys(c.extras || {})))].sort();
