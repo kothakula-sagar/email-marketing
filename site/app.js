@@ -12,6 +12,7 @@
   const defaultState = () => ({
     version: 1,
     contacts: [],
+    campaigns: [],
     campaign: {
       id: id(),
       name: "Introduction campaign",
@@ -20,8 +21,8 @@
       body: "Hi {{name}},\n\nI'm reaching out from {{sender_name}}. I thought our services might be relevant to {{company}}.\n\nWould you be open to a short conversation to see whether there is a fit?\n\nBest regards,\n{{sender_name}}"
     },
     settings: {
-      company: "", senderName: "", senderEmail: "", website: "",
-      address: "", optOutEmail: "", endpoint: ""
+      company: "Abra Logistics", senderName: "ABRA LOGISTIC", senderEmail: "abralogisticsupport@gmail.com", website: "https://www.abra-logistic.com",
+      address: "", optOutEmail: "abralogisticsupport@gmail.com", endpoint: ""
     },
     logs: []
   });
@@ -35,8 +36,8 @@
   let toastTimer = null;
   const pages = {
     overview: ["Overview", "A clear picture of your contact list, campaigns and next steps."],
-    contacts: ["Contacts", "Import fresh CSV data, review permission and manage opt-outs."],
-    compose: ["Email composer", "Write once, personalize every message and preview before sending."],
+    contacts: ["Customers", "The CRM-style customer directory, now with simple local file imports."],
+    compose: ["Email Marketing", "Create campaigns, personalize customer emails and preview before sending."],
     send: ["Send center", "Prepare individual outreach or carefully send to permission-confirmed contacts."],
     settings: ["Settings", "Set sender identity and your optional secure email endpoint."],
     guide: ["Getting started", "Everything you need to run this simple outreach workspace."]
@@ -46,7 +47,7 @@
       const raw = JSON.parse(localStorage.getItem(KEY) || "null");
       if (raw && Array.isArray(raw.contacts) && raw.campaign && raw.settings && Array.isArray(raw.logs)) {
         const fresh = defaultState();
-        return {version: 1, contacts: raw.contacts, campaign: {...fresh.campaign, ...raw.campaign}, settings: {...fresh.settings, ...raw.settings}, logs: raw.logs.slice(-2000)};
+        return {version: 1, contacts: raw.contacts, campaigns: Array.isArray(raw.campaigns) ? raw.campaigns : [], campaign: {...fresh.campaign, ...raw.campaign}, settings: {...fresh.settings, ...raw.settings}, logs: raw.logs.slice(-2000)};
       }
     } catch (_) {}
     return defaultState();
@@ -136,55 +137,71 @@
   }
   function contactsView() {
     return '<div class="grid two">' +
-      '<section class="card"><h3 style="margin-top:0">Import fresh contacts</h3><p class="muted small-text">CSV columns: email, name, company, consent (optional). Extra columns are available as personalization fields. Imported contacts are set to Review unless permission is explicitly marked.</p>' +
-        '<div class="file-picker"><label for="csvFile"><strong>Choose a CSV file</strong></label><p class="help">UTF-8 CSV, up to 10,000 total contacts</p><input id="csvFile" type="file" accept=".csv,text/csv" aria-label="Choose CSV file"></div>' +
-        '<div class="field" style="margin-top:16px"><label for="csvPaste">Or paste CSV rows</label><textarea id="csvPaste" class="textarea" rows="4" placeholder="name,email,company,consent&#10;Priya,priya@example.com,Acme,no&#10;Ravi,ravi@example.com,Example Co,yes"></textarea></div>' +
-        '<div class="row">' + makeButton("import-csv", "Import contacts", "primary") + makeButton("sample-csv", "Download sample CSV", "secondary") + '</div></section>' +
-      '<section class="card"><h3 style="margin-top:0">Add one contact</h3>' +
-        '<div class="field"><label for="newName">Name</label><input id="newName" class="input" placeholder="Contact name"></div>' +
+      '<section class="card"><div class="row between"><h3 style="margin:0">Import CRM customers</h3><span class="crm-tag">CSV / Excel</span></div>' +
+        '<p class="help">Upload a CSV or Excel export from the ABRA Logistics CRM. Supported fields: Import Code, Name, Email, Mobile, Company, Source, Email Status, Consent. Old unsubscribe statuses stay blocked. A CRM “Subscribed” field alone does not prove marketing consent.</p>' +
+        '<div class="file-picker" style="margin-top:16px"><label for="csvFile"><strong>Choose customer file</strong></label><p class="help">.csv / .xlsx / .xls • up to 10,000 customers</p><input id="csvFile" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Choose CRM customer export"></div>' +
+        '<div class="field" style="margin-top:16px"><label for="csvPaste">Or paste CSV rows</label><textarea id="csvPaste" class="textarea" rows="4" placeholder="Name,Email,Mobile,Company,Source,Consent&#10;Priya,priya@example.com,9876543210,Acme,Lead,no"></textarea></div>' +
+        '<div class="row">' + makeButton("import-csv", "Import customers", "primary") + makeButton("sample-csv", "CRM sample CSV", "secondary") + '</div></section>' +
+      '<section class="card"><h3 style="margin-top:0">Add customer</h3>' +
+        '<div class="grid two" style="gap:10px"><div class="field"><label for="newName">Name</label><input id="newName" class="input" placeholder="Customer name"></div>' +
         '<div class="field"><label for="newEmail">Email *</label><input id="newEmail" class="input" type="email" placeholder="name@company.com"></div>' +
-        '<div class="field"><label for="newCompany">Company</label><input id="newCompany" class="input" placeholder="Business name"></div>' +
-        '<div class="field"><label for="newStatus">Permission status</label><select id="newStatus" class="select"><option value="review">Review / cold contact</option><option value="consented">Permission confirmed</option><option value="unsubscribed">Unsubscribed</option></select></div>' +
-        makeButton("add-contact", "Add contact", "primary") + '<p class="help">Only mark “Permission confirmed” when you have evidence of consent to marketing messages.</p></section></div>' +
-      '<div class="section-heading"><h2>Contact list <span class="count">' + data.contacts.length + '</span></h2><div class="row">' + makeButton("export-csv", "Export CSV", "secondary small") + makeButton("remove-active", "Clear active contacts", "danger small") + '</div></div>' +
-      '<div class="card"><div class="searchbar"><input id="searchContact" class="input" type="search" placeholder="Search name, email or company" value="' + esc(contactQuery) + '" aria-label="Search contacts">' +
+        '<div class="field"><label for="newPhone">Mobile</label><input id="newPhone" class="input" inputmode="tel" placeholder="+91..."></div>' +
+        '<div class="field"><label for="newCompany">Company</label><input id="newCompany" class="input" placeholder="Company name"></div></div>' +
+        '<div class="field"><label for="newSource">Source</label><select id="newSource" class="select"><option value="Manual">Manual</option><option value="Lead">Lead</option><option value="Website">Website</option><option value="Import">Import</option><option value="Referral">Referral</option></select></div>' +
+        '<div class="field"><label for="newStatus">Email subscription</label><select id="newStatus" class="select"><option value="review">Needs review / cold contact</option><option value="consented">Permission confirmed</option><option value="unsubscribed">Unsubscribed</option></select></div>' +
+        makeButton("add-contact", "Add customer", "primary") + '<p class="help">Only mark permission confirmed when you have actual marketing opt-in evidence.</p></section></div>' +
+      '<div class="section-heading"><h2>Customers <span class="count">' + data.contacts.length + '</span></h2><div class="row">' + makeButton("export-csv", "Export customers", "secondary small") + makeButton("remove-active", "Clear active contacts", "danger small") + '</div></div>' +
+      '<div class="card"><div class="searchbar"><input id="searchContact" class="input" type="search" placeholder="Search customer, mobile, company or source" value="' + esc(contactQuery) + '" aria-label="Search customers">' +
       '<select id="contactFilter" class="select" style="max-width:175px" aria-label="Filter contact status"><option value="all">All statuses</option><option value="review">Needs review</option><option value="consented">Permission confirmed</option><option value="unsubscribed">Unsubscribed</option></select></div>' +
-      '<div id="contactRows"></div><p class="help">Manual email opens your default mail app. Automated campaigns exclude review and unsubscribed contacts.</p></div>';
+      '<div id="contactRows"></div><p class="help">Manual messages open in your email app. Permission-based automated campaigns exclude unsubscribed and unverified contacts.</p></div>';
   }
   function renderContactRows() {
     if (!$("#contactRows")) return;
-    const filtered = data.contacts.filter(c => (contactFilter === "all" || c.status === contactFilter) && (c.name + " " + c.email + " " + c.company).toLowerCase().includes(contactQuery.toLowerCase()));
+    const filtered = data.contacts.filter(c => (contactFilter === "all" || c.status === contactFilter) &&
+      [c.name,c.email,c.phone,c.company,c.source].join(" ").toLowerCase().includes(contactQuery.toLowerCase()));
     const el = $("#contactRows");
     if ($("#contactFilter")) $("#contactFilter").value = contactFilter;
     if (!filtered.length) {
-      el.innerHTML = '<div class="empty"><div class="emoji">📭</div><h3>No matching contacts</h3><p>Import a CSV or change the search and filter.</p></div>';
+      el.innerHTML = '<div class="empty"><div class="emoji">📭</div><h3>No matching customers</h3><p>Import a CRM file or change the search and filter.</p></div>';
       return;
     }
-    const rows = filtered.slice(0, 250).map(c => {
+    const rows = filtered.slice(0, 250).map((c, i) => {
       const attr = 'data-email="' + esc(c.email) + '"';
       const sent = data.logs.filter(l => l.email === c.email && l.result === "accepted").length;
       const action = c.status === "unsubscribed" ? '<span class="muted small-text">Opted out</span>' :
         makeButton("manual-mail", "✉ Email", "secondary small", attr) +
         (c.status === "review" ? makeButton("mark-consent", "✓ Opt-in", "secondary small", attr) : makeButton("mark-review", "Review", "secondary small", attr)) +
         makeButton("mark-optout", "Opt out", "danger small", attr);
-      return '<tr><td><div class="person"><span class="avatar">' + esc((c.name || c.email || "?").slice(0,1)) + '</span><div><strong>' + esc(c.name || "Unnamed") + '</strong><small>' + esc(c.email) + '</small></div></div></td>' +
-        '<td>' + esc(c.company || "—") + '</td><td><span class="status ' + esc(c.status) + '">' + (c.status === "consented" ? "Permission confirmed" : c.status === "review" ? "Needs review" : "Unsubscribed") + '</span></td>' +
+      return '<tr><td>' + (i+1) + '</td><td><div class="person"><span class="avatar">' + esc((c.name || c.email || "?").slice(0,1)) +
+      '</span><div><strong>' + esc(c.name || "Unnamed") + '</strong><small>' + esc(c.email) + '</small></div></div></td>' +
+        '<td>' + esc(c.phone || "—") + '</td><td>' + esc(c.company || "—") + '</td><td>' + esc(c.source || "Import") + '</td>' +
+        '<td><span class="status ' + esc(c.status) + '">' + (c.status === "consented" ? "Subscribed*" : c.status === "review" ? "Needs review" : "Unsubscribed") + '</span></td>' +
         '<td>' + sent + '</td><td><div class="actions">' + action + '</div></td></tr>';
     }).join("");
-    el.innerHTML = '<div class="table-wrap"><table><thead><tr><th>Contact</th><th>Company</th><th>Status</th><th>Accepted</th><th>Actions</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    el.innerHTML = '<div class="table-wrap"><table class="crm-customers"><thead><tr><th>Sl No</th><th>Name & Email</th><th>Mobile</th><th>Company</th><th>Source</th><th>Email status</th><th>Sent</th><th>Actions</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<p class="help">*Subscribed means verified opt-in in this workspace, not merely a “Subscribed” label imported from the CRM.</p>' +
       (filtered.length > 250 ? '<p class="help">Showing first 250 of ' + filtered.length + ' matches. Refine search to find more.</p>' : "");
   }
   function composeView() {
-    return '<div class="split"><section class="card"><div class="row between"><h3 style="margin:0">Compose message</h3>' + makeButton("new-campaign", "New campaign", "secondary small") + '</div><p class="help">Drafts save automatically in this browser.</p><hr>' +
-      field("Campaign name", "campaign.name", data.campaign.name, "input", "Used to organize send history") +
-      field("Subject", "campaign.subject", data.campaign.subject, "input", "Use tokens like {{name}} and {{company}}") +
-      '<div class="field"><label for="modeInput">Email format</label><select class="select" id="modeInput" data-field="campaign.mode"><option value="text"' + (data.campaign.mode === "text" ? " selected" : "") + '>Plain text (recommended for outreach)</option><option value="html"' + (data.campaign.mode === "html" ? " selected" : "") + '>HTML source</option></select></div>' +
-      '<div class="field"><label for="bodyInput">Message body</label><textarea id="bodyInput" class="textarea" style="min-height:285px" data-field="campaign.body" spellcheck="true">' + esc(data.campaign.body) + '</textarea></div>' +
-      '<div class="template-tools"><button data-act="insert-token" data-token="{{name}}">{{name}}</button><button data-act="insert-token" data-token="{{company}}">{{company}}</button><button data-act="insert-token" data-token="{{email}}">{{email}}</button><button data-act="insert-token" data-token="{{sender_name}}">{{sender_name}}</button></div>' +
-      '<div class="row">' + makeButton("template-intro", "Load intro template", "secondary small") + makeButton("template-followup", "Load follow-up", "secondary small") + makeButton("go-send", "Continue to send →", "primary small") + '</div></section>' +
-      '<section class="card"><div class="row between"><h3 style="margin:0">Live preview</h3><span class="pill">First contact sample</span></div><p class="help">The footer is added to automated emails. HTML previews run in an isolated, script-blocked frame.</p><hr>' +
+    const past = (data.campaigns || []).slice().reverse();
+    const options = '<option value="current">' + esc(data.campaign.name || "Current campaign") + ' — editing</option>' +
+      past.map(c => '<option value="' + esc(c.id) + '">' + esc(c.name || "Untitled campaign") + ' — saved</option>').join("");
+    return '<div class="campaign-strip"><span class="crm-tag">Email Marketing</span><label for="campaignSwitch"><b>Campaign</b></label>' +
+      '<select class="select" id="campaignSwitch" aria-label="Choose saved email campaign">' + options + '</select>' +
+      makeButton("new-campaign", "+ New campaign", "primary small") +
+      '<span class="pill">' + (1+past.length) + ' locally saved</span></div>' +
+      '<div class="split"><section class="card"><div class="row between"><h3 style="margin:0">Create / Edit Campaign</h3><span class="pill">Auto-saved</span></div>' +
+      '<p class="help">Just like the ABRA Logistics CRM: campaign name, subject, message and customer personalization.</p><hr>' +
+      field("Campaign name", "campaign.name", data.campaign.name, "input", "Saved in this browser only") +
+      field("Subject", "campaign.subject", data.campaign.subject, "input", "Use {{Name}}, {{Company}} or other CRM customer details") +
+      '<div class="field"><label for="modeInput">Email format</label><select class="select" id="modeInput" data-field="campaign.mode"><option value="text"' + (data.campaign.mode === "text" ? " selected" : "") + '>Plain text — simple outreach</option><option value="html"' + (data.campaign.mode === "html" ? " selected" : "") + '>HTML template code</option></select></div>' +
+      '<div class="field"><label for="bodyInput">Campaign body</label><textarea id="bodyInput" class="textarea" style="min-height:285px" data-field="campaign.body" spellcheck="true">' + esc(data.campaign.body) + '</textarea></div>' +
+      '<div class="template-tools"><button data-act="insert-token" data-token="{{Name}}">{{Name}}</button><button data-act="insert-token" data-token="{{Company}}">{{Company}}</button><button data-act="insert-token" data-token="{{Email}}">{{Email}}</button><button data-act="insert-token" data-token="{{Phone}}">{{Phone}}</button><button data-act="insert-token" data-token="{{Source}}">{{Source}}</button><button data-act="insert-token" data-token="{{sender_name}}">{{sender_name}}</button></div>' +
+      '<div class="row">' + makeButton("template-intro", "Intro template", "secondary small") + makeButton("template-followup", "Follow-up template", "secondary small") + makeButton("go-send", "Review sending →", "primary small") + '</div></section>' +
+      '<section class="card"><div class="row between"><h3 style="margin:0">Email preview</h3><span class="pill">Personalized</span></div>' +
+      '<p class="help">HTML rendering uses a sandboxed, script-blocked frame. The automatic-sending footer includes opt-out information.</p><hr>' +
       '<div class="preview"><div class="preview-subject" id="previewSubject"></div><iframe id="previewFrame" title="Email preview" sandbox="" referrerpolicy="no-referrer"></iframe></div>' +
-      '<p class="help">Tokens also work with other imported CSV columns: for example, {{city}} or {{industry}}.</p></section></div>';
+      '<p class="help">Other imported CSV columns also work: {{city}}, {{industry}}, {{pickup_city}} and more.</p></section></div>';
   }
   function field(label, key, value, type, hint) {
     const formId = key.replace(".", "-");
