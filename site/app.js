@@ -128,7 +128,7 @@
       '<div class="card"><div class="steps">' +
         '<div class="step"><div class="number">1</div><strong>Import contacts</strong><p>Upload a CSV or paste new rows. Duplicate addresses are merged.</p><br>' + makeButton("go-contacts", "Import CSV", "secondary small") + '</div>' +
         '<div class="step"><div class="number">2</div><strong>Write your email</strong><p>Personalize with {{name}}, {{company}} and any CSV columns.</p><br>' + makeButton("go-compose", "Open composer", "secondary small") + '</div>' +
-        '<div class="step"><div class="number">3</div><strong>Review and send</strong><p>Open an individual email, or send to verified opt-in contacts through your own secure endpoint.</p><br>' + makeButton("go-send", "Send center", "primary small") + '</div>' +
+        '<div class="step"><div class="number">3</div><strong>Review and send</strong><p>Open an individual email, or send to verified opt-in contacts through the local SMTP mailbox.</p><br>' + makeButton("go-send", "Send center", "primary small") + '</div>' +
       '</div></div>' +
       '<div class="section-heading"><h2>Workspace notes</h2></div>' +
       '<div class="grid two">' +
@@ -494,14 +494,14 @@
   function exportLog() {
     const rows = [["date","email","campaign","result","provider_id","error"],
       ...data.logs.map(l => [l.at,l.email,l.campaignName,l.result,l.providerId || "",l.error || ""])];
-    downloadFile("mailpilot-send-history.csv", toCSV(rows), "text/csv;charset=utf-8");
+    downloadFile("ABRA_Logistics_Send_History.csv", toCSV(rows), "text/csv;charset=utf-8");
   }
   async function restoreBackup(file) {
     if (!file) return;
     try {
       if (file.size > 6 * 1024 * 1024) throw Error("Backup too large.");
       const raw = JSON.parse(await file.text());
-      if (!raw || !Array.isArray(raw.contacts) || !raw.campaign || !raw.settings || !Array.isArray(raw.logs)) throw Error("Not a MailPilot backup.");
+      if (!raw || !Array.isArray(raw.contacts) || !raw.campaign || !raw.settings || !Array.isArray(raw.logs)) throw Error("Not a valid ABRA Logistics email marketing backup.");
       if (raw.contacts.length > MAX_CONTACTS) throw Error("Too many contacts in backup.");
       const suppressedBefore = data.contacts.filter(c => c.status === "unsubscribed");
       if (!confirm("Restore this backup? Existing contacts and drafts will be replaced, but current opt-outs will remain suppressed.")) return;
@@ -655,7 +655,7 @@
     if (action === "re-consent") return setStatus(email,"consented");
     if (action === "export-csv") return exportCSV();
     if (action === "export-log") return exportLog();
-    if (action === "export-backup") return downloadFile("mailpilot-backup-" + new Date().toISOString().slice(0,10) + ".json",JSON.stringify({...data,backedUpAt:new Date().toISOString()},null,2),"application/json;charset=utf-8");
+    if (action === "export-backup") return downloadFile("ABRA_Logistics_Backup-" + new Date().toISOString().slice(0,10) + ".json",JSON.stringify({...data,backedUpAt:new Date().toISOString()},null,2),"application/json;charset=utf-8");
     if (action === "sample-csv") return downloadFile("ABRA_Logistics_Customer_Import.csv",toCSV([["Import Code","Name","Email","Mobile","Company","Source","Email Status","Consent"],["","Priya Sharma","priya@example.com","9876543210","Example Industries","Lead","Subscribed","no"],["","Ravi Kumar","ravi@example.com","9123456789","Sample Company","Referral","Subscribed","yes"]]),"text/csv;charset=utf-8");
     if (action === "remove-active") {
       if (confirm("Remove all active and review contacts? Unsubscribed contacts will be kept as a suppression list.")) {
