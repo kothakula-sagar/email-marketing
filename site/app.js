@@ -15,10 +15,10 @@
     campaigns: [],
     campaign: {
       id: id(),
-      name: "Introduction campaign",
-      subject: "Quick introduction for {{company}}",
+      name: "ABRA Logistics | B2B Introduction",
+      subject: "Freight solutions for {{Company}}",
       mode: "text",
-      body: "Hi {{name}},\n\nI'm reaching out from {{sender_name}}. I thought our services might be relevant to {{company}}.\n\nWould you be open to a short conversation to see whether there is a fit?\n\nBest regards,\n{{sender_name}}"
+      body: "Hi {{Name}},\n\nI am reaching out from {{sender_name}} at ABRA LOGISTIC. We offer FTL and PTL freight solutions for business shipments across South India.\n\nWould you be open to a brief conversation about logistics requirements at {{Company}}?\n\nRegards,\n{{sender_name}}"
     },
     settings: {
       company: "Abra Logistics", senderName: "ABRA LOGISTIC", senderEmail: "abralogisticsupport@gmail.com", website: "https://www.abra-logistic.com",
@@ -482,9 +482,22 @@
     } catch (error) {toast(error.message || "Could not restore this backup.", true);}
   }
   function newCampaign() {
-    if (!confirm("Start a new campaign? Your current draft will be replaced. Existing send logs remain.")) return;
+    if (running) return toast("Finish sending before switching campaigns.",true);
+    if (!confirm("Create a new campaign? The current draft will be saved to the campaign library.")) return;
+    if (!Array.isArray(data.campaigns)) data.campaigns = [];
+    data.campaigns.push({...data.campaign});
     data.campaign = defaultState().campaign;
-    save(); render(); toast("New campaign created.");
+    save(); render(); toast("New campaign ready. Previous campaign saved.");
+  }
+  function switchCampaign(campaignId) {
+    if (running) return toast("Finish sending before switching campaigns.",true);
+    if (!campaignId || campaignId === "current") return;
+    const selectedIndex = data.campaigns.findIndex(c => c.id === campaignId);
+    if (selectedIndex < 0) return toast("Campaign not found.",true);
+    const selected = data.campaigns.splice(selectedIndex,1)[0];
+    data.campaigns.push({...data.campaign});
+    data.campaign = selected;
+    save();render();toast("Opened campaign: " + data.campaign.name);
   }
   function loadTemplate(which) {
     if (!confirm("Replace the current subject and body with this template?")) return;
@@ -610,6 +623,7 @@
   document.addEventListener("change", (event) => {
     const target = event.target;
     if (target.id === "contactFilter") {contactFilter = target.value;renderContactRows();}
+    if (target.id === "campaignSwitch") return switchCampaign(target.value);
     if (target.id === "restoreBackup") restoreBackup(target.files[0]);
     if (target.dataset.field) {saveField(target.dataset.field,target.value);if(page === "compose") updatePreview();}
   });
