@@ -1,9 +1,9 @@
-/* MailPilot — static, localStorage-only frontend. No keys are stored here. */
+/* ABRA LOGISTIC — localhost email marketing frontend. Contacts and campaigns use localStorage; SMTP credentials stay only in local .env. */
 (function () {
   "use strict";
   const KEY = "mailpilot.workspace.v1";
   const MAX_CONTACTS = 10000;
-  const MAX_RUN = 25;
+  const MAX_RUN = 10;
   const SEND_INTERVAL = 8000;
   const $ = (selector) => document.querySelector(selector);
   const esc = (value) => String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -21,8 +21,8 @@
       body: "Hi {{Name}},\n\nI am reaching out from {{sender_name}} at ABRA LOGISTIC. We offer FTL and PTL freight solutions for business shipments across South India.\n\nWould you be open to a brief conversation about logistics requirements at {{Company}}?\n\nRegards,\n{{sender_name}}"
     },
     settings: {
-      company: "Abra Logistics", senderName: "ABRA LOGISTIC", senderEmail: "abralogisticsupport@gmail.com", website: "https://www.abra-logistic.com",
-      address: "", optOutEmail: "abralogisticsupport@gmail.com", endpoint: ""
+      company: "Abra Logistics", senderName: "ABRA LOGISTIC", senderEmail: "support@abra-logistic.com", website: "https://www.abra-logistic.com",
+      address: "", optOutEmail: "support@abra-logistic.com", endpoint: ""
     },
     logs: []
   });
@@ -33,14 +33,15 @@
   let running = false;
   let stopRequested = false;
   let progress = {done: 0, total: 0, accepted: 0, failed: 0};
+  let smtpStatus = null;
   let toastTimer = null;
   const pages = {
     overview: ["Overview", "A clear picture of your contact list, campaigns and next steps."],
     contacts: ["Customers", "The CRM-style customer directory, now with simple local file imports."],
     compose: ["Email Marketing", "Create campaigns, personalize customer emails and preview before sending."],
     send: ["Send center", "Prepare individual outreach or carefully send to permission-confirmed contacts."],
-    settings: ["Settings", "Set sender identity and your optional secure email endpoint."],
-    guide: ["Getting started", "Everything you need to run this simple outreach workspace."]
+    settings: ["Settings", "Check local SMTP configuration and manage private browser backups."],
+    guide: ["Getting started", "Download locally, configure .env and start emailing through your cPanel mailbox."]
   };
   function load() {
     try {
@@ -96,9 +97,9 @@
     $("#pageTitle").textContent = pages[page][0];
     $("#pageSubtitle").textContent = pages[page][1];
     document.querySelectorAll("[data-nav]").forEach(btn => btn.classList.toggle("active", btn.dataset.nav === page));
-    const configured = !!data.settings.endpoint;
+    const configured = !!smtpStatus?.configured;
     $("#endpointDot").className = "dot" + (configured ? " on" : "");
-    $("#endpointStatus").textContent = configured ? "API endpoint configured" : "Manual outreach";
+    $("#endpointStatus").textContent = configured ? "SMTP configured" : "SMTP setup required";
     $("#view").innerHTML = page === "overview" ? overview() :
       page === "contacts" ? contactsView() :
       page === "compose" ? composeView() :
@@ -606,6 +607,9 @@
     if (action === "template-followup") return loadTemplate("followup");
     if (action === "insert-token") return appendToken(target.dataset.token);
     if (action === "start-send") return startSending();
+    if (action === "verify-smtp") return verifySmtp();
+    if (action === "test-email") return sendTestEmail();
+    if (action === "refresh-smtp") return refreshSmtpStatus(true);
     if (action === "stop-send") {stopRequested = true; toast("Stopping after the current request."); return;}
   });
   document.addEventListener("input", (event) => {
@@ -614,10 +618,7 @@
     if (target.dataset.field) {
       saveField(target.dataset.field,target.value);
       if (page === "compose") updatePreview();
-      if (target.dataset.field === "settings.endpoint") {
-        $("#endpointStatus").textContent = target.value ? "API endpoint configured" : "Manual outreach";
-        $("#endpointDot").className = target.value ? "dot on" : "dot";
-      }
+
     }
   });
   document.addEventListener("change", (event) => {
@@ -628,4 +629,5 @@
     if (target.dataset.field) {saveField(target.dataset.field,target.value);if(page === "compose") updatePreview();}
   });
   render();
+  refreshSmtpStatus(false);
 })();
