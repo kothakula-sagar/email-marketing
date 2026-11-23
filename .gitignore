@@ -1,8 +1,11 @@
+# Local mailbox credentials (never commit)
 .env
 .env.*
 !.env.example
-.dev.vars*
+
+# npm install output
 node_modules/
+npm-debug.log*
+coverage/
 .DS_Store
-.worker-secrets.json
-.wrangler/
+Thumbs.db
