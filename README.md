@@ -8,7 +8,7 @@ The app uses the **support@abra-logistic.com** mailbox's SMTP login to send emai
 
 ## 1. Download and start
 
-Requires **Node.js 20 or newer** and npm.
+Requires **Node.js 22.12.0 or newer** and npm (use a current Node.js LTS release).
 
 1. Download the repository as a ZIP and extract it, or clone:
 
