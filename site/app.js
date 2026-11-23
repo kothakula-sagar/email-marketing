@@ -210,7 +210,7 @@
     return "\n\n—\n" + company + (s.address ? " | " + s.address : "") + "\n" +
       (unsubscribe ? "To stop further outreach, reply 'unsubscribe' or email " + unsubscribe + "." : "Reply 'unsubscribe' to stop further outreach.");
   }
-  function htmlEmail(contact) {
+  function htmlEmail(contact, includeFooter) {
     const s = data.settings;
     const unsub = validEmail(s.optOutEmail) ? s.optOutEmail : s.senderEmail;
     const body = data.campaign.mode === "html"
@@ -220,14 +220,14 @@
       esc(s.company || s.senderName || "Sender") + (s.address ? ' · ' + esc(s.address) : "") +
       '<div>To opt out, reply <b>unsubscribe</b>' +
       (validEmail(unsub) ? ' or <a href="mailto:' + encodeURIComponent(unsub) + '?subject=Unsubscribe">email us</a>' : "") + '.</div></div>';
-    return '<!doctype html><html><head><meta charset="utf-8"></head><body style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.7;color:#1f2937;max-width:650px;padding:22px;margin:auto">' + body + footer + '</body></html>';
+    return '<!doctype html><html><head><meta charset="utf-8"></head><body style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.7;color:#1f2937;max-width:650px;padding:22px;margin:auto">' + body + (includeFooter === false ? '' : footer) + '</body></html>';
   }
-  function plainBody(contact) {
+  function plainBody(contact, includeFooter) {
     const body = replaceTokens(data.campaign.body, contact, false);
     const text = data.campaign.mode === "html"
       ? body.replace(/<br\s*\/?>/gi,"\n").replace(/<\/p>/gi,"\n\n").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
       : body;
-    return text + footerText(contact);
+    return text + (includeFooter === false ? '' : footerText(contact));
   }
   function updatePreview() {
     const sample = data.contacts.find(c => c.status !== "unsubscribed") || {name:"Priya Sharma",email:"priya@example.com",company:"Example Industries",extras:{}};
@@ -493,8 +493,8 @@
       const payload = {
         to:contact.email,
         subject:replaceTokens(data.campaign.subject,contact,false),
-        html:htmlEmail(contact),
-        text:plainBody(contact),
+        html:htmlEmail(contact, false),
+        text:plainBody(contact, false),
         consentConfirmed:true
       };
       let outcome = "failed", errorText = "", providerId = "";
