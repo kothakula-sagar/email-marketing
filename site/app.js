@@ -447,7 +447,7 @@
     setTimeout(() => URL.revokeObjectURL(url), 1500);
   }
   function toCSV(rows) {
-    return "\uFEFF" + rows.map(row => row.map(v => {let cell = String(v == null ? "" : v); if (/^[\\t\\r\\n ]*[=+@]/.test(cell)) cell = "'" + cell; return '"' + cell.replace(/"/g, '""') + '"';}).join(",")).join("\r\n");
+    return "\uFEFF" + rows.map(row => row.map(v => {let cell = String(v == null ? "" : v); if (/^[\t\r\n ]*[=+@-]/.test(cell)) cell = "'" + cell; return '"' + cell.replace(/"/g, '""') + '"';}).join(",")).join("\r\n");
   }
   function exportCSV() {
     const extras = [...new Set(data.contacts.flatMap(c => Object.keys(c.extras || {})))].sort();
