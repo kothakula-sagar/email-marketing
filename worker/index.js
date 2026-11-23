@@ -82,7 +82,7 @@ export default {
       escapeHtml(env.COMPANY_NAME) + ' · ' + escapeHtml(env.POSTAL_ADDRESS) +
       '<br>To stop further emails, reply <strong>unsubscribe</strong> or email <a href="mailto:' +
       encodeURIComponent(optOutAddress) + '?subject=Unsubscribe">' + escapeHtml(optOutAddress) + '</a>.</div>';
-    const finalHtml = html + footerHtml;
+    const finalHtml = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, footerHtml + "</body>") : html + footerHtml;
     const finalText = textBody + '\n\n—\n' + env.COMPANY_NAME + ' | ' + env.POSTAL_ADDRESS +
       '\nTo opt out, reply unsubscribe or email ' + optOutAddress + '.';
     const payload = {
