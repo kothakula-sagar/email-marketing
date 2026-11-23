@@ -169,7 +169,7 @@
     const rows = filtered.slice(0, 250).map((c, i) => {
       const attr = 'data-email="' + esc(c.email) + '"';
       const sent = data.logs.filter(l => l.email === c.email && l.result === "accepted").length;
-      const action = c.status === "unsubscribed" ? '<span class="muted small-text">Opted out</span>' :
+      const action = c.status === "unsubscribed" ? makeButton("re-consent","Re-subscribe","secondary small",attr) :
         makeButton("manual-mail", "✉ Email", "secondary small", attr) +
         (c.status === "review" ? makeButton("mark-consent", "✓ Opt-in", "secondary small", attr) : makeButton("mark-review", "Review", "secondary small", attr)) +
         makeButton("mark-optout", "Opt out", "danger small", attr);
@@ -462,8 +462,9 @@
   function setStatus(email, status) {
     const c = findContact(email);
     if (!c) return;
-    if (c.status === "unsubscribed" && status !== "unsubscribed") return toast("An unsubscribed address remains suppressed. Obtain a new, documented opt-in before making changes.", true);
-    if (status === "consented" && !confirm("Confirm " + c.email + " explicitly opted in to marketing emails?")) return;
+    if (c.status === "unsubscribed" && status !== "unsubscribed" && status !== "consented") return toast("An unsubscribed address remains suppressed until a fresh opt-in.", true);
+    if (c.status === "unsubscribed" && status === "consented" && !confirm("Re-subscribe " + c.email + "? Confirm you have NEW documented, explicit marketing permission from this customer since they opted out.")) return;
+    if (c.status !== "unsubscribed" && status === "consented" && !confirm("Confirm " + c.email + " explicitly opted in to marketing emails?")) return;
     c.status = status; save(); renderContactRows(); toast("Contact updated.");
   }
   function manualMail(email) {
@@ -651,6 +652,7 @@
     if (action === "mark-consent") return setStatus(email,"consented");
     if (action === "mark-review") return setStatus(email,"review");
     if (action === "mark-optout") return setStatus(email,"unsubscribed");
+    if (action === "re-consent") return setStatus(email,"consented");
     if (action === "export-csv") return exportCSV();
     if (action === "export-log") return exportLog();
     if (action === "export-backup") return downloadFile("mailpilot-backup-" + new Date().toISOString().slice(0,10) + ".json",JSON.stringify({...data,backedUpAt:new Date().toISOString()},null,2),"application/json;charset=utf-8");
