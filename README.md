@@ -1,107 +1,158 @@
-# ABRA LOGISTIC | Email Marketing
+# ABRA LOGISTIC — Local Email Marketing
 
-A no-login, no-database email dashboard built with static HTML, CSS and JavaScript. Contacts, campaigns, settings, status, history and backups use **browser localStorage**. The optional sending API is a stateless Cloudflare Worker with Gmail OAuth (like the existing CRM) or Resend.
+A simple desktop-friendly web app that runs **on your own computer**. No login, no database, no GitHub Pages and no Cloudflare required.
 
-## Features
+**Start:** npm install once, create your private local .env, then npm start → http://localhost:3000
 
-- Import CSV, XLSX/XLS CRM customer exports or paste CSV rows; max 10,000 customers
-- Add customers with Name, Email, Mobile, Company and Source; merge duplicate emails, search/filter and export CRM-style CSV
-- Review / Permission confirmed / Unsubscribed statuses; opt-outs preserved on reimport
-- Multiple saved campaigns with text/HTML composer and sandboxed live preview
-- Personalization: {{name}}, {{first_name}}, {{email}}, {{company}}, {{sender_name}}, {{website}}, plus CSV columns
-- Individual cold outreach through reviewed mailto drafts (manual sending)
-- Optional opt-in campaign sending: 25 contacts per run, 8 seconds apart; stop button and local history
-- Avoid repeat sends within one campaign, export history, JSON backup/restore
-- Responsive navy and gold ABRA CRM-like interface; no login and no database (Excel import uses SheetJS from CDN)
+The app uses the **support@abra-logistic.com** mailbox's SMTP login to send email. This is the same email account shown in Roundcube at webmail.abra-logistic.com, but Roundcube is only the mailbox interface; the outgoing server hostname must be obtained from cPanel separately.
 
-**Cold email policy:** The automated provider integration is **only for permission-confirmed contacts**. Resend explicitly prohibits unsolicited cold outreach, scraped data and purchased lists: https://resend.com/legal/acceptable-use . Use the individual mailto draft workflow for lawful, personalized outreach using your own email app and its policies.
+## 1. Download and start
 
-## 1. Start with the website
+Requires **Node.js 20 or newer** and npm.
 
-1. GitHub repository Settings → Pages → Source: **GitHub Actions**.
-2. Actions → **Deploy MailPilot website** → Run workflow (or push a change to site/).
-3. After successful deployment, the expected public URL is:
-   https://kothakula-sagar.github.io/email-marketing/
-4. Import CSV/Excel from Customers, create an email in Email Marketing, then open an individual draft from the customer row.
+1. Download the repository as a ZIP and extract it, or clone:
 
-CRM customer CSV example:
+   git clone https://github.com/kothakula-sagar/email-marketing.git
 
-    Import Code,Name,Email,Mobile,Company,Source,Email Status,Consent
-    ,Priya Sharma,priya@example.com,9876543210,Example Industries,Lead,Subscribed,no
-    ,Ravi Kumar,ravi@example.com,9123456789,Sample Company,Referral,Subscribed,yes
+2. Open a terminal in the project folder:
 
-- consent=yes/true/consented means permission-confirmed **only if you have evidence of opt-in**.
-- consent=no/blank/missing means Needs review, not eligible for automated sending.
-- consent=unsubscribed/opt_out OR Email Status=Unsubscribed/Not Interested means suppressed. A CRM Subscribed field alone is treated as Needs review, not permission evidence.
-- Previously unsubscribed emails remain suppressed on future imports.
+   cd email-marketing
+   npm install
 
-## 2. Optional permission-based automated sending
+3. Create your private **.env** file from **.env.example**.
 
-**Recommended for Abra Logistics:** use authorized Gmail OAuth email sending, like your [existing Abra Logistics CRM](https://github.com/kothakula-sagar/Abra-logistics-crm). The CRM documentation identifies `abralogisticsupport@gmail.com` as the sending account. The Gmail API sends HTML and plain-text MIME in a single email. You can alternatively select Resend.
+   Windows PowerShell:
+   
+       Copy-Item .env.example .env
 
-**This is a separate frontend with localStorage only. It does not read CRM data automatically or connect to the live CRM login/database.** Import fresh CRM customer exports into this app.
+   Windows Command Prompt:
 
-To send via Gmail, you need Cloudflare Workers, Google Cloud Gmail API enabled, an authorized OAuth 2.0 client and a Gmail refresh token authorized with the `gmail.send` scope. The sending account's authorization/consent must be completed by the account owner. Gmail's provider policies and consent requirements still apply.
+       copy .env.example .env
 
-Create a GitHub Environment named **production** in repo Settings → Environments. Add these values as **individual Environment secrets**:
+   macOS/Linux:
 
-| Secret | Value |
-| --- | --- |
-| CLOUDFLARE_API_TOKEN | Cloudflare API token with Workers Scripts editing permission |
-| CLOUDFLARE_ACCOUNT_ID | Cloudflare account ID |
-| EMAIL_PROVIDER | `gmail` for CRM-style sending, or `resend` (default if omitted) |
-| GMAIL_CLIENT_ID | Google Cloud OAuth client ID (for gmail) |
-| GMAIL_CLIENT_SECRET | OAuth client secret (for gmail) |
-| GMAIL_REFRESH_TOKEN | OAuth refresh token from the authorized Gmail account (for gmail) |
-| GMAIL_USER_EMAIL | Authorized account, e.g. abralogisticsupport@gmail.com (for gmail) |
-| RESEND_API_KEY | Resend API key (only for resend) |
-| SEND_ACCESS_TOKEN | Random 24+ character send passphrase; separate from provider credentials |
-| ALLOWED_ORIGIN | https://kothakula-sagar.github.io (without trailing slash or repo path) |
-| SENDER_EMAIL | Gmail: same as GMAIL_USER_EMAIL; Resend: verified sender |
-| FROM_NAME | Sender display name, e.g. ABRA LOGISTIC |
-| COMPANY_NAME | Business name |
-| POSTAL_ADDRESS | Accurate business mailing address |
-| UNSUBSCRIBE_EMAIL | Monitored mailbox for marketing opt-outs |
+       cp .env.example .env
 
-Run Actions → **Deploy mail Worker** → Run workflow. The workflow validates provider-specific secrets and deploys them to Cloudflare, **not** GitHub Pages. Copy the resulting Worker URL and append `/send`.
+4. In .env, fill in the correct values from cPanel (instructions below).
+5. Start:
 
-In the app Settings, set the secure `/send` HTTPS endpoint and sender details. In Send center, provide the SEND_ACCESS_TOKEN for each send session (not stored in localStorage), confirm actual recipient opt-in, and approve the real send.
+       npm start
 
-**Never commit credentials or refresh tokens.** The `.env.example` is placeholders only; Environment secrets are runtime deployment inputs and cannot be injected into publicly hosted static JavaScript.
+6. Open http://localhost:3000 in a browser. Leave the terminal window open while using the app.
+7. In **Send center**, select **Check SMTP connection**. After success, use **Send test email** to your own configured TEST_EMAIL before any customer campaign.
 
-Docs: [Gmail API sending](https://developers.google.com/workspace/gmail/api/guides/sending), [Cloudflare secrets](https://developers.cloudflare.com/workers/configuration/secrets/), [Resend API](https://resend.com/docs/api-reference/emails/send-email).
+To stop, press **Ctrl + C** in the terminal. When you open it another day, run **npm start** (npm install is usually needed only after downloading or changing dependencies).
 
-## 3. Local data and delivery limitations
+### Do not use the Roundcube web address as SMTP_HOST
 
-- localStorage belongs to the current browser and website origin. Clearing site data erases contact data. Export a private JSON backup regularly.
-- Replies to UNSUBSCRIBE_EMAIL **must be processed manually**. Mark them Unsubscribed inside Contacts before any future send and keep a backup suppression list.
-- There is no server database, centralized suppression list, webhook, automatic unsubscribe landing page, multi-device sync, open/click pixel, or server-side daily rate limiter. For large-scale marketing, use an approved purpose-built platform with durable opt-outs.
-- “Accepted” means the email provider accepted the API request, **not** that the email was delivered or read.
-- A public Worker URL is protected by a separate send passphrase and exact browser origin check; CORS alone is not access control.
-- The Worker enforces verified sender identity and appends business mailing address and unsubscribe guidance to messages.
-- Keep exported CSV/JSON data confidential and respect all applicable email/privacy laws.
+Open cPanel → Email Accounts → find **support@abra-logistic.com** → **Connect Devices** → *Mail Client Manual Settings*.
 
-## 4. Run tests locally
+Use the **Outgoing Server** and SMTP port/encryption shown there. Depending on your hosting configuration, this may be:
+- Port **465** with SSL/TLS, **SMTP_SECURE=true**, or
+- Port **587** with STARTTLS, **SMTP_SECURE=false**.
 
-Requires Node.js 22+.
+Use the exact server hostname shown in cPanel. Do **not** assume that webmail.abra-logistic.com is the SMTP hostname.
+
+SMTP_USER is support@abra-logistic.com. SMTP_PASS is the mailbox's email-account password or the provider-supported SMTP credential. **Never post this password in chat or commit it to GitHub.**
+
+## 2. Local .env example
+
+Copy .env.example and replace placeholders locally:
+
+    APP_PORT=3000
+
+    SMTP_HOST=YOUR_OUTGOING_MAIL_SERVER_FROM_CPANEL
+    SMTP_PORT=465
+    SMTP_SECURE=true
+    SMTP_USER=support@abra-logistic.com
+    SMTP_PASS=YOUR_PRIVATE_MAILBOX_PASSWORD
+
+    SENDER_EMAIL=support@abra-logistic.com
+    SENDER_NAME=ABRA LOGISTIC
+    REPLY_TO_EMAIL=support@abra-logistic.com
+    UNSUBSCRIBE_EMAIL=support@abra-logistic.com
+
+    COMPANY_NAME=ABRA LOGISTIC
+    BUSINESS_ADDRESS=YOUR_REAL_BUSINESS_POSTAL_ADDRESS
+    TEST_EMAIL=YOUR_OWN_TEST_EMAIL
+
+    SEND_INTERVAL_MS=8000
+    SEND_DAILY_LIMIT=50
+
+Save the file, then restart npm start. The real .env is excluded by .gitignore.
+
+**Secrets stay on your friend's computer.** The frontend never reads SMTP_PASS, and browser data contains only contacts, campaigns, statuses, previews and local send history. There is no GitHub Environment deployment.
+
+## 3. What is included
+
+### Customers
+- Add individually: **Name, Email, Mobile, Company, Source, Email subscription**
+- Import customers from **CSV** or **XLSX** (Excel read in memory by the local Node server); paste CSV rows
+- Supports familiar Abra Logistics CRM columns: **Import Code, Name, Email, Mobile, Company, Source, Email Status, Consent**
+- Search and filter, deduplicate by email and export customer CSV
+- Three statuses: **Needs review, Permission confirmed, Unsubscribed**
+- Preserve previous Unsubscribed statuses when importing more data or restoring a backup
+
+**Permission reminder:** a legacy CRM column that simply says "Subscribed" is not proof of opt-in. An imported customer is marked Needs review unless the Consent column clearly records verified permission. Not Interested/Unsubscribed always overrides any consent.
+
+### Email Marketing
+- Create and switch between multiple locally saved email campaigns
+- Campaign name, subject, message body, plain text or HTML source
+- Live sandboxed preview and personalization tokens:
+  {{Name}}, {{Company}}, {{Email}}, {{Phone}}, {{Source}}, {{sender_name}}, plus imported columns such as {{city}}
+- Individual email draft opens in your normal email client
+- Automated sends only to recipients confirmed as opted in
+- Maximum **10 recipients per UI run**, **8 seconds between accepted sends**, plus a **50-per-day process cap by default**
+- "Stop after current email" control
+- Per-campaign duplicate prevention, SMTP accepted/failed logs and local CSV history export
+- All outgoing messages include business identity, physical mailing address, and manual email unsubscribe instructions
+- Check SMTP Connection and Send Test Email
+
+### Local storage and backups
+- Customers, subscribed/unsubscribed choices, campaigns, settings and send history are stored in the **browser's localStorage** only.
+- Export full JSON backup, restore it or export CSV.
+- Clearing browser site data can erase your local data. Different browsers/devices/origins do not sync.
+- The Node server handles SMTP and XLSX parsing **in memory only**. It does not create or use an SQL or cloud database.
+- SMTP credentials are only in your local .env and are **never stored in localStorage**.
+- For consistent data, always use **http://localhost:3000**, not a mixture of localhost and 127.0.0.1.
+
+## 4. Important before sending — failed deliveries in Roundcube
+
+The screenshot of the support mailbox shows many messages with the subject **"Mail delivery failed: returning message to..."**. This suggests messages have bounced, but the screenshot itself does not show the underlying reason or which addresses failed.
+
+Before sending to customers:
+1. Open one of the Mail Delivery System notices in Roundcube.
+2. Find the diagnostic text or SMTP status code, e.g. recipient not found, mailbox full, policy rejected, rate-limited or blocked.
+3. In cPanel, review **Email Deliverability** (SPF, DKIM, DMARC), **Track Delivery**, SMTP quota and any domain/IP blocklists.
+4. Stop or suppress undeliverable addresses, honor unsubscribe replies, and test with an email you control.
+5. Start with a very small permission-based campaign. Check for delayed bounces.
+
+**SMTP accepted does not mean delivered.** The local app records the server's accepted response, not inbox placement. Mailbox provider limits are still in force, even if you change the local app's safety caps.
+
+## 5. Limitations
+
+- Automated bulk sending is for permission-confirmed recipients only. Use individual, reviewed outreach where permitted by law and the hosting provider.
+- **No automatic opt-out sync:** customers replying "unsubscribe" must be manually marked Unsubscribed in the local Customers screen. Do not contact them again.
+- **No durable server-side suppression**: this is a no-database local app. A deleted browser profile or an old backup can lose opt-outs. Maintain a secure current backup.
+- No open or click tracking, no bounce webhooks, no reply reading, no background send queue and no automatic delivery confirmations.
+- **Roundcube Sent folder:** sending via SMTP does not automatically insert messages into the webmail IMAP Sent folder. Use this app's local send log unless IMAP Sent-folder archiving is added later.
+- This is a **single-computer/single-browser** tool. The Node server binds to 127.0.0.1 only; it must not be publicly exposed or placed on a production server without additional authentication and durable compliance controls.
+- The per-process local safety cap resets when the program restarts; it does not replace hosting quotas.
+
+## 6. Code and tests
+
+    server.js               Local Express + Nodemailer SMTP service, test endpoints, Excel importer
+    site/index.html         User interface
+    site/styles.css         Abra Logistics-themed styling
+    site/app.js             Contacts, campaigns, localStorage, email preview, SMTP UI
+    tests/frontend.test.js  CRM column parsing, consent, templates, campaigns
+    tests/local.test.js     Local API request protection and SMTP formatting
+    .env.example            Local placeholders (never contains secrets)
+    .gitignore              Excludes .env and node_modules
+    package.json            npm start, npm test and dependencies
+
+Run checks:
 
     npm test
-    npm run serve
 
-No frontend build step. npm test runs JavaScript syntax checks and Worker security unit tests.
-
-## Files
-
-    site/index.html                  Static web app
-    site/styles.css                  Responsive styles
-    site/app.js                      CRM imports, contact fields, campaigns, localStorage and send UI
-    worker/index.js                  Stateless Resend Worker
-    wrangler.toml                    Worker settings
-    tests/worker.test.js             Worker security, Gmail MIME and API forwarding tests
-    tests/frontend.test.js           CRM CSV parsing and campaign tests
-    .github/workflows/test.yml       CI tests
-    .github/workflows/deploy-pages.yml  Pages deployment
-    .github/workflows/deploy-worker.yml Worker deployment
-    .env.example                     Secret names only, no credentials
-
-**No automatic cold-email blasts, no contact harvesting and no account/login system.**
+The project tests use fake test-only environment values. They do not contact the actual mailbox or send real emails. Actual end-to-end delivery must be tested on the user's computer after setting up the real cPanel credentials.
