@@ -4,11 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#101b32">
-  <meta name="description" content="Simple private email outreach dashboard. Import contacts, personalize messages and prepare compliant campaigns using localStorage.">
+  <meta name="description" content="Local ABRA Logistics customer and email marketing dashboard using browser localStorage and local SMTP.">
   <title>ABRA LOGISTIC | Email Marketing</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23245eea'/%3E%3Cpath d='M12 21h40v23H12zM12 22l20 15 20-15' fill='none' stroke='white' stroke-width='4' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -32,7 +31,7 @@
       <div class="container">
         <header class="header">
           <div><div class="eyebrow">ABRA LOGISTIC • CRM-INSPIRED</div><h1 id="pageTitle">Overview</h1><p class="subhead" id="pageSubtitle">Manage contacts and messages from one simple dashboard.</p></div>
-          <div class="header-actions"><span class="chip"><span class="dot" id="endpointDot"></span><span id="endpointStatus">Manual outreach</span></span><span class="chip">No login • Local data</span></div>
+          <div class="header-actions"><span class="chip"><span class="dot" id="endpointDot"></span><span id="endpointStatus">Manual outreach</span></span><span class="chip">Localhost • No login • No database</span></div>
         </header>
         <div id="view" aria-live="polite"></div>
         <footer class="foot">ABRA LOGISTIC · Email Marketing Workspace · Local browser storage</footer>
