@@ -114,6 +114,7 @@
   }
   function go(to) {
     if (!pages[to]) return;
+    if (running && to !== "send") return toast("Stop the current batch or wait for it to finish.", true);
     page = to;
     render();
     window.scrollTo({top:0, behavior:"instant"});
@@ -184,25 +185,32 @@
       (filtered.length > 250 ? '<p class="help">Showing first 250 of ' + filtered.length + ' matches. Refine search to find more.</p>' : "");
   }
   function composeView() {
-    const past = (data.campaigns || []).slice().reverse();
-    const options = '<option value="current">' + esc(data.campaign.name || "Current campaign") + ' — editing</option>' +
-      past.map(c => '<option value="' + esc(c.id) + '">' + esc(c.name || "Untitled campaign") + ' — saved</option>').join("");
-    return '<div class="campaign-strip"><span class="crm-tag">Email Marketing</span><label for="campaignSwitch"><b>Campaign</b></label>' +
-      '<select class="select" id="campaignSwitch" aria-label="Choose saved email campaign">' + options + '</select>' +
-      makeButton("new-campaign", "+ New campaign", "primary small") +
-      '<span class="pill">' + (1+past.length) + ' locally saved</span></div>' +
-      '<div class="split"><section class="card"><div class="row between"><h3 style="margin:0">Create / Edit Campaign</h3><span class="pill">Auto-saved</span></div>' +
-      '<p class="help">Just like the ABRA Logistics CRM: campaign name, subject, message and customer personalization.</p><hr>' +
-      field("Campaign name", "campaign.name", data.campaign.name, "input", "Saved in this browser only") +
-      field("Subject", "campaign.subject", data.campaign.subject, "input", "Use {{Name}}, {{Company}} or other CRM customer details") +
-      '<div class="field"><label for="modeInput">Email format</label><select class="select" id="modeInput" data-field="campaign.mode"><option value="text"' + (data.campaign.mode === "text" ? " selected" : "") + '>Plain text — simple outreach</option><option value="html"' + (data.campaign.mode === "html" ? " selected" : "") + '>HTML template code</option></select></div>' +
-      '<div class="field"><label for="bodyInput">Campaign body</label><textarea id="bodyInput" class="textarea" style="min-height:285px" data-field="campaign.body" spellcheck="true">' + esc(data.campaign.body) + '</textarea></div>' +
-      '<div class="template-tools"><button data-act="insert-token" data-token="{{Name}}">{{Name}}</button><button data-act="insert-token" data-token="{{Company}}">{{Company}}</button><button data-act="insert-token" data-token="{{Email}}">{{Email}}</button><button data-act="insert-token" data-token="{{Phone}}">{{Phone}}</button><button data-act="insert-token" data-token="{{Source}}">{{Source}}</button><button data-act="insert-token" data-token="{{sender_name}}">{{sender_name}}</button></div>' +
-      '<div class="row">' + makeButton("template-intro", "Intro template", "secondary small") + makeButton("template-followup", "Follow-up template", "secondary small") + makeButton("go-send", "Review sending →", "primary small") + '</div></section>' +
-      '<section class="card"><div class="row between"><h3 style="margin:0">Email preview</h3><span class="pill">Personalized</span></div>' +
-      '<p class="help">HTML rendering uses a sandboxed, script-blocked frame. The automatic-sending footer includes opt-out information.</p><hr>' +
-      '<div class="preview"><div class="preview-subject" id="previewSubject"></div><iframe id="previewFrame" title="Email preview" sandbox="" referrerpolicy="no-referrer"></iframe></div>' +
-      '<p class="help">Other imported CSV columns also work: {{city}}, {{industry}}, {{pickup_city}} and more.</p></section></div>';
+    const campaigns = [data.campaign, ...data.campaigns.slice().reverse()];
+    const library = campaigns.map(c => {
+      const current = c.id === data.campaign.id;
+      return '<li><div><strong>' + esc(c.name || "Untitled campaign") + '</strong>' +
+        '<span>' + esc(c.subject || "No subject yet") + '</span></div>' +
+        (current ? '<span class="status consented">Editing</span>' :
+          makeButton("open-campaign", "Open", "secondary small", 'data-campaign="' + esc(c.id) + '"')) + '</li>';
+    }).join("");
+    return '<div class="stack"><section class="card"><div class="row between">' +
+      '<h2>Saved campaigns</h2>' + makeButton("new-campaign", "+ New campaign", "primary") +
+      '</div><ul class="campaign-list">' + library + '</ul></section>' +
+      '<div class="split campaign-editor"><section class="card"><div class="row between">' +
+      '<h2>Write your email</h2><span class="pill">Changes save automatically</span></div>' +
+      field("Campaign name", "campaign.name", data.campaign.name, "input", "For your team’s reference") +
+      field("Email subject", "campaign.subject", data.campaign.subject) +
+      '<div class="field"><label for="bodyInput">Message</label><textarea id="bodyInput" class="textarea campaign-message" data-field="campaign.body">' + esc(data.campaign.body) + '</textarea></div>' +
+      '<details><summary>Templates and personalization</summary><p>Insert customer details at the cursor.</p><div class="template-tools">' +
+      [["Name","{{Name}}"],["Company","{{Company}}"],["Email","{{Email}}"],["Phone","{{Phone}}"],["Source","{{Source}}"],["Sender name","{{sender_name}}"]].map(([label,token]) =>
+        makeButton("insert-token", label, "", 'data-token="' + token + '"')).join("") +
+      '</div><div class="field"><label for="modeInput">Message format</label><select class="select" id="modeInput" data-field="campaign.mode"><option value="text">Plain text</option><option value="html"' +
+      (data.campaign.mode === "html" ? " selected" : "") + '>HTML</option></select></div><div class="row">' +
+      makeButton("template-intro", "Use introduction template", "secondary small") +
+      makeButton("template-followup", "Use follow-up template", "secondary small") + '</div></details>' +
+      '<div class="campaign-actions">' + makeButton("review-campaign", "Review recipients", "primary") + '</div></section>' +
+      '<section class="card"><h2>Email preview</h2><div class="preview"><div class="preview-subject" id="previewSubject"></div>' +
+      '<iframe id="previewFrame" title="Email preview" sandbox="" referrerpolicy="no-referrer"></iframe></div></section></div></div>';
   }
   function field(label, key, value, type, hint) {
     const formId = key.replace(".", "-");
@@ -254,47 +262,53 @@
     if (subject) subject.textContent = "Subject: " + replaceTokens(data.campaign.subject, sample, false);
     if (frame) frame.srcdoc = htmlEmail(sample);
   }
+  function campaignReady() {
+    return ["name", "subject", "body"].every(key => String(data.campaign[key] || "").trim());
+  }
   function sendView() {
-    const ready = eligible().length;
-    const c=counts();
-    const mailbox = smtpStatus?.configured ? esc(smtpStatus.from) :
-      'Mailbox setup required · ' + makeButton("go-settings", "Open settings", "secondary small");
-    return '<section class="card"><div class="row between"><h3 style="margin:0">Campaign recipients</h3><span>' + mailbox + '</span></div>' +
-      '<p class="muted">Only customers marked permission confirmed are eligible for automated sending. Unsubscribed addresses and already accepted recipients for this campaign are excluded.</p>' +
-      '<div class="grid two"><div class="ghost-box"><div class="muted small-text">Eligible to send</div><div style="font-size:29px;font-weight:800">' + ready + '</div></div>' +
-      '<div class="ghost-box"><div class="muted small-text">Excluded</div><div style="font-size:29px;font-weight:800">' + (c.total-ready) + '</div></div></div>' +
-      '<div style="margin-top:15px">' + makeButton("go-contacts", "View customer list", "secondary small") + '</div></section>' +
-      '<div class="section-heading"><h2>Campaign sending</h2><span class="pill">Max ' + MAX_RUN + ' per run · at least ' + SEND_INTERVAL / 1000 + ' seconds between sends</span></div>' +
-      '<div class="split"><section class="card">' +
-      '<div class="field"><label>Campaign name</label><input class="input" value="' + esc(data.campaign.name) + '" readonly></div>' +
-      '<div class="field"><label>Subject</label><input class="input" value="' + esc(data.campaign.subject) + '" readonly></div>' +
-      '<label class="checkrow"><input type="checkbox" id="confirmPermission"><span>I have verified that these specific customers have agreed to receive marketing messages, checked the unsubscribe requests and delivery errors, and previewed the email content.</span></label><br>' +
-      '<div class="row">' + makeButton("start-send", "Start email campaign", "primary", running?"disabled":"") +
-        makeButton("stop-send", "Stop after current email", "danger",running?"":"disabled") + '</div>' +
-      '</section>' +
-      '<section class="card"><div class="row between"><h3 style="margin:0">Send progress</h3><span class="pill" id="progressLabel">Ready</span></div>' +
-      '<p class="help">“Accepted” means the SMTP server accepted the message. It may still bounce later. The webmail Sent folder may not automatically show SMTP API sends.</p>' +
-      '<div class="progress-track" style="margin:24px 0 12px"><div class="progress-fill" id="progressFill"></div></div>' +
-      '<div class="grid two"><div><span class="muted small-text">Accepted</span><div id="progressAccepted" style="font-size:26px;font-weight:800">0</div></div>' +
-      '<div><span class="muted small-text">Failed</span><div id="progressFailed" style="font-size:26px;font-weight:800">0</div></div></div><hr>' +
-      '<div class="row between"><b>Recent send history</b>' + makeButton("export-log", "Export log", "secondary small") + '</div>' + logsHtml(9) + '</section></div>';
+    const recipients = eligible();
+    const batch = recipients.slice(0, MAX_RUN);
+    const logs = data.logs.filter(log => log.campaignId === data.campaign.id);
+    const accepted = new Set(logs.filter(log => log.result === "accepted").map(log => emailKey(log.email)));
+    const failed = new Set(logs.filter(log => log.result === "failed" && !accepted.has(emailKey(log.email))).map(log => emailKey(log.email)));
+    const summary = [["Waiting to send", recipients.length], ["Accepted by mailbox", accepted.size], ["Failed recipients", failed.size]]
+      .map(([label,total]) => '<div class="ghost-box"><span>' + label + '</span><strong>' + total + '</strong></div>').join("");
+    const issue = !campaignReady() ? "Add a campaign name, subject, and message before sending." :
+      !smtpStatus?.configured ? "Set up the sending mailbox in Settings." :
+      !batch.length ? "No opted-in customers are waiting for this campaign." : "";
+    return '<div class="stack"><section class="card"><div class="row between"><h2>' +
+      esc(data.campaign.name || "Untitled campaign") + '</h2>' + makeButton("go-compose", "Edit campaign", "secondary small", running ? "disabled" : "") +
+      '</div><p><strong>Subject</strong> · ' + esc(data.campaign.subject || "No subject yet") + '</p>' +
+      '<p class="help">From ' + esc(smtpStatus?.from || "Mailbox setup required") + '</p>' +
+      '<div class="send-summary">' + summary + '</div></section>' +
+      '<div class="split"><section class="card"><h2>Review and send</h2>' +
+      '<p class="help">Each batch sends to up to ' + MAX_RUN + ' opted-in customers. Failed emails may appear in the next batch.</p>' +
+      (batch.length && !running ? '<details><summary>View next ' + batch.length + ' recipients</summary><ul class="recipient-list">' +
+        batch.map(c => '<li>' + esc(c.email) + '</li>').join("") + '</ul></details>' : '') +
+      (issue && !running ? '<p class="note">' + esc(issue) + '</p>' : '') +
+      (!running && !issue ? '<label class="checkrow campaign-actions"><input type="checkbox" id="confirmPermission"><span>I reviewed the message and confirmed these customers opted in.</span></label>' : '') +
+      '<div class="row campaign-actions">' +
+        (running ? makeButton("stop-send", "Stop after current email", "danger") :
+          makeButton("start-send", "Send " + batch.length + (batch.length === 1 ? " email" : " emails"), "primary", issue ? "disabled" : "")) +
+      '</div><div class="progress-track campaign-actions"><div class="progress-fill" id="progressFill"></div></div>' +
+      '<p class="help" id="progressLabel" role="status"></p></section>' +
+      '<section class="card"><div class="row between"><h2>Campaign activity</h2>' + makeButton("export-log", "Export campaign log", "secondary small") + '</div>' +
+      '<p class="help">Accepted means the sending mailbox accepted the email. Delivery can still fail later.</p>' +
+      logsHtml(12, logs) + '</section></div></div>';
   }
   function updateProgress() {
     if (!$("#progressFill")) return;
     $("#progressFill").style.width = (progress.total ? Math.round(progress.done / progress.total * 100) : 0) + "%";
-    $("#progressAccepted").textContent = progress.accepted;
-    $("#progressFailed").textContent = progress.failed;
-    $("#progressLabel").textContent = running ? progress.done + " / " + progress.total : (progress.done ? "Finished" : "Ready");
-    const start = document.querySelector('[data-act="start-send"]');
-    const stop = document.querySelector('[data-act="stop-send"]');
-    if (start) start.disabled = running;
-    if (stop) stop.disabled = !running;
+    $("#progressLabel").textContent = progress.total ?
+      (running ? "Sending · " : progress.stopped ? "Stopped · " : "Batch finished · ") +
+      progress.done + " of " + progress.total + " processed · " + progress.accepted + " accepted · " + progress.failed + " failed" : "";
   }
-  function logsHtml(n) {
-    const items = data.logs.slice().reverse().slice(0, n);
-    if (!items.length) return '<div class="empty"><div class="emoji">🗂</div><h3>No send history yet</h3><p>Any API sending results will appear here, saved locally.</p></div>';
+  function logsHtml(n, logs = data.logs) {
+    const items = logs.slice().reverse().slice(0, n);
+    if (!items.length) return '<p class="help">No emails sent yet.</p>';
     return '<div class="log-list">' + items.map(l =>
-      '<div class="log"><div><strong>' + esc(l.email) + '</strong><span>' + esc(l.campaignName || "Campaign") + ' · ' + fmtDate(l.at) + '</span></div>' +
+      '<div class="log"><div><strong>' + esc(l.email) + '</strong><span>' + esc(l.campaignName || "Campaign") + ' · ' + fmtDate(l.at) + '</span>' +
+      (l.error ? '<p class="help">' + esc(l.error) + '</p>' : '') + '</div>' +
       '<span class="status ' + (l.result === "accepted" ? "consented" : "unsubscribed") + '">' + (l.result === "accepted" ? "Accepted" : "Failed") + '</span></div>'
     ).join("") + '</div>';
   }
@@ -482,7 +496,7 @@
   }
   function exportLog() {
     const rows = [["date","email","campaign","result","provider_id","error"],
-      ...data.logs.map(l => [l.at,l.email,l.campaignName,l.result,l.providerId || "",l.error || ""])];
+      ...data.logs.filter(l => l.campaignId === data.campaign.id).map(l => [l.at,l.email,l.campaignName,l.result,l.providerId || "",l.error || ""])];
     downloadFile("ABRA_Logistics_Send_History.csv", toCSV(rows), "text/csv;charset=utf-8");
   }
   async function restoreBackup(file) {
@@ -504,11 +518,11 @@
   }
   function newCampaign() {
     if (running) return toast("Finish sending before switching campaigns.",true);
-    if (!confirm("Create a new campaign? The current draft will be saved to the campaign library.")) return;
     if (!Array.isArray(data.campaigns)) data.campaigns = [];
     data.campaigns.push({...data.campaign});
-    data.campaign = defaultState().campaign;
-    save(); render(); toast("New campaign ready. Previous campaign saved.");
+    data.campaign = {id:id(), name:"", subject:"", mode:"text", body:""};
+    progress = {done:0,total:0,accepted:0,failed:0};
+    save(); render(); $("#campaign-name")?.focus?.();
   }
   function switchCampaign(campaignId) {
     if (running) return toast("Finish sending before switching campaigns.",true);
@@ -518,6 +532,7 @@
     const selected = data.campaigns.splice(selectedIndex,1)[0];
     data.campaigns.push({...data.campaign});
     data.campaign = selected;
+    progress = {done:0,total:0,accepted:0,failed:0};
     save();render();toast("Opened campaign: " + data.campaign.name);
   }
   function loadTemplate(which) {
@@ -560,11 +575,13 @@
   }
   async function startSending() {
     if (running) return;
+    if (!campaignReady()) return toast("Add a campaign name, subject, and message before sending.", true);
     if(!smtpStatus?.configured) return toast("Open Settings for mailbox setup instructions.",true);
     const ready=eligible();
     if(!ready.length) return toast("No consent-confirmed unsent customers for this campaign.",true);
     if(!$("#confirmPermission")?.checked) return toast("Confirm customer permission and opt-out review first.",true);
     const batch=ready.slice(0,MAX_RUN);
+    const campaign={...data.campaign};
     if(!confirm("This will send "+batch.length+" real emails from your local SMTP mailbox, spaced at least "+(SEND_INTERVAL/1000)+" seconds apart. Are you sure these customers opted in?")) return;
     running=true;stopRequested=false;
     progress={done:0,total:batch.length,accepted:0,failed:0};
@@ -573,7 +590,7 @@
       if(stopRequested) break;
       const payload={
         to:contact.email,
-        subject:replaceTokens(data.campaign.subject,contact,false),
+        subject:replaceTokens(campaign.subject,contact,false),
         html:htmlEmail(contact,false),
         text:plainBody(contact,false),
         consentConfirmed:true
@@ -594,8 +611,8 @@
           providerId=String(result.id||"").slice(0,180);
         }
       }catch(e){errorText=String(e.message||"SMTP request failed").slice(0,180);stopRequested=true;}
-      data.logs.push({at:new Date().toISOString(),email:contact.email,campaignId:data.campaign.id,
-        campaignName:data.campaign.name,result:outcome,error:errorText,providerId});
+      data.logs.push({at:new Date().toISOString(),email:contact.email,campaignId:campaign.id,
+        campaignName:campaign.name,result:outcome,error:errorText,providerId});
       data.logs=data.logs.slice(-2000);
       save();
       progress.done++;
@@ -605,6 +622,7 @@
     }
     running=false;
     const endedEarly=stopRequested;
+    progress.stopped=endedEarly;
     stopRequested=false;
     render();
     toast("Finished: "+progress.accepted+" accepted by SMTP, "+progress.failed+" failed."+(endedEarly?" Stopped early.":""));
@@ -634,6 +652,11 @@
       }
       return;
     }
+    if (action === "review-campaign") {
+      if (!campaignReady()) return toast("Add a campaign name, subject, and message first.", true);
+      return go("send");
+    }
+    if (action === "open-campaign") return switchCampaign(target.dataset.campaign);
     if (action === "new-campaign") return newCampaign();
     if (action === "template-intro") return loadTemplate("intro");
     if (action === "template-followup") return loadTemplate("followup");
@@ -644,18 +667,24 @@
   document.addEventListener("input", (event) => {
     const target = event.target;
     if (target.id === "searchContact") {contactQuery = target.value; renderContactRows(); return;}
-    if (target.dataset.field) {
+    if (!running && target.dataset.field) {
       saveField(target.dataset.field,target.value);
-      if (page === "compose") updatePreview();
+      if (page === "compose") {
+        updatePreview();
+        const active = $(".campaign-list li");
+        if (active?.querySelector) {
+          active.querySelector("strong").textContent = data.campaign.name || "Untitled campaign";
+          active.querySelector("div span").textContent = data.campaign.subject || "No subject yet";
+        }
+      }
 
     }
   });
   document.addEventListener("change", (event) => {
     const target = event.target;
     if (target.id === "contactFilter") {contactFilter = target.value;renderContactRows();}
-    if (target.id === "campaignSwitch") return switchCampaign(target.value);
     if (target.id === "restoreBackup") restoreBackup(target.files[0]);
-    if (target.dataset.field) {saveField(target.dataset.field,target.value);if(page === "compose") updatePreview();}
+    if (!running && target.dataset.field) {saveField(target.dataset.field,target.value);if(page === "compose") updatePreview();}
   });
   render();
   refreshSmtpStatus();

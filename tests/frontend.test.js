@@ -70,6 +70,9 @@ test("New campaign saves previous campaign and switching restores it",()=>{
   const initial=hooks.getData().campaign.id;
   hooks.newCampaign();
   assert.equal(hooks.getData().campaigns.length,1);
+  assert.equal(hooks.getData().campaign.name,"");
+  assert.equal(hooks.getData().campaign.subject,"");
+  assert.equal(hooks.getData().campaign.body,"");
   const another=hooks.getData().campaign.id;
   assert.notEqual(another,initial);
   hooks.switchCampaign(initial);
