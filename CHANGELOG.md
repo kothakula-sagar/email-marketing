@@ -12,7 +12,7 @@
 - Confirm the URL-prefix property still verifies with the homepage meta tag.
 - Submit the published sitemap and confirm its status and discovered URL count.
 - Inspect the homepage and the new guides, then request indexing for priority URLs.
-- Run the Google Rich Results Test against the homepage. Confirm the SoftwareApplication and FAQPage blocks are detected. Review software eligibility requirements without creating ratings or reviews, and keep in mind that Google restricts FAQ rich results.
+- Run the [Google Rich Results Test](https://search.google.com/test/rich-results) for SoftwareApplication. Review any rating or review eligibility requirements without adding fictitious data. Google retired FAQ rich results, so use the [Schema Markup Validator](https://validator.schema.org/) for FAQPage and check that the answers match the visible accordion. See [Google Search documentation updates](https://developers.google.com/search/updates).
 - Check the project-level robots.txt and the actual domain-root robots policy independently. GitHub Pages project settings cannot override the account site's domain-root robots.txt.
 
 ## Optional assets
