@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 
-function openApp() {
+function openApp(initialState = null) {
   const source = fs.readFileSync(new URL("../site/app.js",import.meta.url),"utf8");
-  const marker = /\s*render\(\);\s*\}\)\(\);\s*$/;
+  const marker = /\s*render\(\);\s*refreshSmtpStatus\(\);\s*\}\)\(\);\s*$/;
   assert.match(source,marker);
   const exposed = source.replace(marker,
-    "\n  globalThis.testHooks = {parseCSV,parseContacts,replaceTokens,toCSV,newCampaign,switchCampaign,plainBody,htmlEmail,getData:()=>data};\n  render();\n})();");
+    "\n  globalThis.testHooks = {parseCSV,parseContacts,replaceTokens,toCSV,newCampaign,switchCampaign,plainBody,htmlEmail,importCSV,addContact,restoreBackup,eligible,go,getData:()=>data};\n  render();\n})();");
   const nodes = new Map();
   const node = selector => {
     if (!nodes.has(selector)) {
@@ -19,7 +19,7 @@ function openApp() {
     }
     return nodes.get(selector);
   };
-  let saved = null;
+  let saved = JSON.stringify(initialState);
   const context = {
     console, Date, Math, JSON, Map, Set, RegExp,
     localStorage:{getItem(){return saved},setItem(_,value){saved=value}},
@@ -29,7 +29,7 @@ function openApp() {
     setTimeout:()=>1,clearTimeout:()=>{}
   };
   vm.runInNewContext(exposed,context,{filename:"site/app.js"});
-  return {hooks:context.testHooks,saved:()=>JSON.parse(saved)};
+  return {hooks:context.testHooks,node,saved:()=>JSON.parse(saved)};
 }
 
 test("CRM customer spreadsheet headers, mobile, source, quoted values and email normalization",()=>{
@@ -82,4 +82,45 @@ test("Customer CSV export escapes spreadsheet formula cells",()=>{
   const {hooks}=openApp();
   const csv=hooks.toCSV([["Name","Email"],["=HYPERLINK(1)","foo@example.com"]]);
   assert.match(csv,/'=HYPERLINK\(1\)/);
+});
+
+test("import skips existing and repeated email IDs while reporting invalid rows", async () => {
+  const {hooks,node,saved}=openApp();
+  hooks.go("contacts");
+  node("#csvFile").files=[];
+  node("#csvPaste").value="Email,Name,Consent\nfirst@example.com,Original,yes";
+  await hooks.importCSV();
+  node("#csvPaste").value="Email,Name,Consent\n FIRST@example.com ,Replacement,no\nsecond@example.com,First row,no\nSECOND@example.com,Second row,yes\ninvalid,Invalid,no";
+  await hooks.importCSV();
+  assert.equal(saved().contacts.length,2);
+  assert.equal(saved().contacts[0].name,"Original");
+  assert.equal(saved().contacts[1].name,"First row");
+  assert.equal(saved().contacts[1].status,"review");
+  assert.match(node("#view").innerHTML,/1 added · 2 duplicates skipped · 1 invalid emails skipped/);
+  node("#newEmail").value=" FIRST@EXAMPLE.COM ";
+  hooks.addContact();
+  assert.equal(saved().contacts.length,2);
+  assert.match(node("#toast").textContent,/already exists/);
+  node("#csvPaste").value="Email,Email Status\nFIRST@example.com,Unsubscribed";
+  await hooks.importCSV();
+  assert.equal(saved().contacts.length,2);
+  assert.equal(saved().contacts[0].status,"unsubscribed");
+});
+
+test("existing and restored contacts are deduplicated and opt-outs remain suppressed", async () => {
+  const {hooks,saved}=openApp({contacts:[
+    {email:" Example@Example.com ",status:"consented"},
+    {email:"example@example.com",status:"unsubscribed"}
+  ],campaign:{},settings:{},logs:[]});
+  assert.equal(hooks.getData().contacts.length,1);
+  assert.equal(hooks.eligible().length,0);
+  const backup={contacts:[
+    {email:"EXAMPLE@example.com",status:"consented"},
+    {email:"other@example.com",status:"consented"},
+    {email:"OTHER@example.com",status:"consented"}
+  ],campaign:{},settings:{},logs:[]};
+  await hooks.restoreBackup({text:async()=>JSON.stringify(backup)});
+  assert.deepEqual(saved().contacts.map(c=>[c.email,c.status]),[
+    ["example@example.com","unsubscribed"],["other@example.com","consented"]
+  ]);
 });

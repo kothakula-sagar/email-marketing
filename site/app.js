@@ -8,6 +8,8 @@
   const $ = (selector) => document.querySelector(selector);
   const esc = (value) => String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const validEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || "").trim());
+  const emailKey = (value) => String(value ?? "").trim().toLowerCase();
+  const IMPORT_HEADERS = ["Email","Name","Mobile","Company","Source","Email Status","Consent","Import Code"];
   const id = () => "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   const defaultState = () => ({
     version: 1,
@@ -30,17 +32,18 @@
   let page = "overview";
   let contactQuery = "";
   let contactFilter = "all";
+  let importSummary = "";
   let running = false;
   let stopRequested = false;
   let progress = {done: 0, total: 0, accepted: 0, failed: 0};
   let smtpStatus = null;
   let toastTimer = null;
   const pages = {
-    overview: ["Overview", "A clear picture of your contact list, campaigns and next steps."],
-    contacts: ["Customers", "The CRM-style customer directory, now with simple local file imports."],
-    compose: ["Email Marketing", "Create campaigns, personalize customer emails and preview before sending."],
-    send: ["Send center", "Prepare individual outreach or carefully send to permission-confirmed contacts."],
-    settings: ["Settings", "Check local SMTP configuration and manage private browser backups."],
+    overview: ["Overview", "Add customers, write a campaign, then review and send."],
+    contacts: ["Customers", "Import a list, add a customer, or manage email subscriptions."],
+    compose: ["Campaigns", "Write and preview your email before sending."],
+    send: ["Send campaign", "Review eligible customers and send your campaign."],
+    settings: ["Settings", "View mailbox settings and manage workspace backups."],
     guide: ["Getting started", "Download locally, configure .env and start emailing through your cPanel mailbox."]
   };
   function load() {
@@ -48,7 +51,7 @@
       const raw = JSON.parse(localStorage.getItem(KEY) || "null");
       if (raw && Array.isArray(raw.contacts) && raw.campaign && raw.settings && Array.isArray(raw.logs)) {
         const fresh = defaultState();
-        return {version: 1, contacts: raw.contacts, campaigns: Array.isArray(raw.campaigns) ? raw.campaigns : [], campaign: {...fresh.campaign, ...raw.campaign}, settings: {...fresh.settings, ...raw.settings}, logs: raw.logs.slice(-2000)};
+        return {version: 1, contacts: uniqueContacts(raw.contacts), campaigns: Array.isArray(raw.campaigns) ? raw.campaigns : [], campaign: {...fresh.campaign, ...raw.campaign}, settings: {...fresh.settings, ...raw.settings}, logs: raw.logs.slice(-2000)};
       }
     } catch (_) {}
     return defaultState();
@@ -88,7 +91,7 @@
     };
   }
   function campaignAccepted(email) {
-    return data.logs.some(x => x.result === "accepted" && x.campaignId === data.campaign.id && x.email === email);
+    return data.logs.some(x => x.result === "accepted" && x.campaignId === data.campaign.id && emailKey(x.email) === emailKey(email));
   }
   function eligible() {
     return data.contacts.filter(x => x.status === "consented" && validEmail(x.email) && !campaignAccepted(x.email));
@@ -99,7 +102,7 @@
     document.querySelectorAll("[data-nav]").forEach(btn => btn.classList.toggle("active", btn.dataset.nav === page));
     const configured = !!smtpStatus?.configured;
     $("#endpointDot").className = "dot" + (configured ? " on" : "");
-    $("#endpointStatus").textContent = configured ? "SMTP configured" : "SMTP setup required";
+    $("#endpointStatus").textContent = configured ? "Mailbox configured" : "Mailbox setup required";
     $("#view").innerHTML = page === "overview" ? overview() :
       page === "contacts" ? contactsView() :
       page === "compose" ? composeView() :
@@ -118,41 +121,38 @@
   function overview() {
     const c = counts();
     const kpis = [
-      ["Total contacts", c.total, "Imported into this browser", "♧"],
-      ["Permission confirmed", c.consented, "Eligible for automated sending", "✓"],
-      ["Needs review", c.review, "Use personal outreach", "⌕"],
-      ["Provider accepted", c.accepted, "Not verified deliveries", "➤"]
-    ].map(x => '<div class="card stat"><div class="iconbox">' + x[3] + '</div><div class="label">' + x[0] + '</div><div class="value">' + x[1].toLocaleString() + '</div><div class="note">' + x[2] + '</div></div>').join("");
+      ["Customers", c.total],
+      ["Opted in", c.consented],
+      ["Needs review", c.review],
+      ["Emails accepted", c.accepted]
+    ].map(x => '<div class="card stat"><div class="label">' + x[0] + '</div><div class="value">' + x[1].toLocaleString() + '</div></div>').join("");
     return '<div class="grid four">' + kpis + '</div>' +
-      '<div class="section-heading"><h2>Start in three steps</h2><small>No registration required</small></div>' +
+      '<div class="section-heading"><h2>Start in three steps</h2></div>' +
       '<div class="card"><div class="steps">' +
-        '<div class="step"><div class="number">1</div><strong>Import contacts</strong><p>Upload a CSV or paste new rows. Duplicate addresses are merged.</p><br>' + makeButton("go-contacts", "Import CSV", "secondary small") + '</div>' +
-        '<div class="step"><div class="number">2</div><strong>Write your email</strong><p>Personalize with {{name}}, {{company}} and any CSV columns.</p><br>' + makeButton("go-compose", "Open composer", "secondary small") + '</div>' +
-        '<div class="step"><div class="number">3</div><strong>Review and send</strong><p>Open an individual email, or send to verified opt-in contacts through the local SMTP mailbox.</p><br>' + makeButton("go-send", "Send center", "primary small") + '</div>' +
+        '<div class="step"><div class="number">1</div><strong>Import contacts</strong><p>Upload a CSV or Excel file. Existing email addresses are skipped.</p><br>' + makeButton("go-contacts", "Open customers", "secondary small") + '</div>' +
+        '<div class="step"><div class="number">2</div><strong>Write your email</strong><p>Personalize with {{name}}, {{company}} and any CSV columns.</p><br>' + makeButton("go-compose", "Open campaigns", "secondary small") + '</div>' +
+        '<div class="step"><div class="number">3</div><strong>Review and send</strong><p>Open an individual email, or send to verified opt-in contacts through the local SMTP mailbox.</p><br>' + makeButton("go-send", "Review and send", "primary small") + '</div>' +
       '</div></div>' +
-      '<div class="section-heading"><h2>Workspace notes</h2></div>' +
-      '<div class="grid two">' +
-        '<div class="card"><h3 style="margin-top:0">📥 Your data stays here</h3><p class="muted">Contacts, template drafts, permission statuses and send history live in localStorage on this device and browser. Nothing syncs across devices. Export backups before clearing browser data.</p>' + makeButton("export-backup", "Download JSON backup", "secondary small") + '</div>' +
-        '<div class="card"><h3 style="margin-top:0">🛡 Responsible sending</h3><p class="muted">Cold contacts can be approached individually through your mail app where permitted. Automated marketing sends only include permission-confirmed contacts. Always honor unsubscribe requests and your provider rules.</p>' + makeButton("go-guide", "Read setup guide", "secondary small") + '</div>' +
-      '</div><div class="section-heading"><h2>Recent activity</h2></div><div class="card">' + logsHtml(5) + '</div>';
+      '<div class="section-heading"><h2>Recent activity</h2></div><div class="card">' + logsHtml(5) + '</div>';
   }
   function contactsView() {
     return '<div class="grid two">' +
-      '<section class="card"><div class="row between"><h3 style="margin:0">Import CRM customers</h3><span class="crm-tag">CSV / Excel</span></div>' +
-        '<p class="help">Upload a CSV or Excel export from the ABRA Logistics CRM. Supported fields: Import Code, Name, Email, Mobile, Company, Source, Email Status, Consent. Old unsubscribe statuses stay blocked. A CRM “Subscribed” field alone does not prove marketing consent.</p>' +
-        '<div class="file-picker" style="margin-top:16px"><label for="csvFile"><strong>Choose customer file</strong></label><p class="help">.csv / .xlsx • up to 10,000 customers</p><input id="csvFile" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Choose CRM customer export"></div>' +
-        '<div class="field" style="margin-top:16px"><label for="csvPaste">Or paste CSV rows</label><textarea id="csvPaste" class="textarea" rows="4" placeholder="Name,Email,Mobile,Company,Source,Consent&#10;Priya,priya@example.com,9876543210,Acme,Lead,no"></textarea></div>' +
-        '<div class="row">' + makeButton("import-csv", "Import customers", "primary") + makeButton("sample-csv", "CRM sample CSV", "secondary") + '</div></section>' +
+      '<section class="card"><h3 style="margin:0">Import customers</h3>' +
+        '<p class="help">Download the template, fill in your customer details, then upload it here. Email is required. Repeated email addresses are skipped.</p>' +
+        '<div class="row">' + makeButton("download-template", "Download import template", "secondary small") + '</div><div class="file-picker" style="margin-top:16px"><label for="csvFile"><strong>Choose customer file</strong></label><p class="help">.csv / .xlsx • up to 10,000 customers</p><input id="csvFile" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Choose CRM customer export"></div>' +
+        '<details style="margin:12px 0"><summary>Paste CSV instead</summary><div class="field"><label for="csvPaste">CSV rows</label><textarea id="csvPaste" class="textarea" rows="4" placeholder="Name,Email,Mobile,Company,Source,Consent&#10;Priya,priya@example.com,9876543210,Acme,Lead,no"></textarea></div></details>' +
+        '<div class="row">' + makeButton("import-csv", "Import customers", "primary") + '</div>' +
+        (importSummary ? '<p class="help" role="status">' + esc(importSummary) + '</p>' : '') + '</section>' +
       '<section class="card"><h3 style="margin-top:0">Add customer</h3>' +
-        '<div class="grid two" style="gap:10px"><div class="field"><label for="newName">Name</label><input id="newName" class="input" placeholder="Customer name"></div>' +
-        '<div class="field"><label for="newEmail">Email *</label><input id="newEmail" class="input" type="email" placeholder="name@company.com"></div>' +
+        '<div class="grid two" style="gap:10px"><div class="field"><label for="newEmail">Email (required)</label><input id="newEmail" class="input" type="email" required placeholder="name@company.com"></div>' +
+        '<div class="field"><label for="newName">Name</label><input id="newName" class="input" placeholder="Customer name"></div>' +
         '<div class="field"><label for="newPhone">Mobile</label><input id="newPhone" class="input" inputmode="tel" placeholder="+91..."></div>' +
         '<div class="field"><label for="newCompany">Company</label><input id="newCompany" class="input" placeholder="Company name"></div></div>' +
         '<div class="field"><label for="newSource">Source</label><select id="newSource" class="select"><option value="Manual">Manual</option><option value="Lead">Lead</option><option value="Website">Website</option><option value="Import">Import</option><option value="Referral">Referral</option></select></div>' +
         '<div class="field"><label for="newStatus">Email subscription</label><select id="newStatus" class="select"><option value="review">Needs review / cold contact</option><option value="consented">Permission confirmed</option><option value="unsubscribed">Unsubscribed</option></select></div>' +
         makeButton("add-contact", "Add customer", "primary") + '<p class="help">Only mark permission confirmed when you have actual marketing opt-in evidence.</p></section></div>' +
-      '<div class="section-heading"><h2>Customers <span class="count">' + data.contacts.length + '</span></h2><div class="row">' + makeButton("export-csv", "Export customers", "secondary small") + makeButton("remove-active", "Clear active contacts", "danger small") + '</div></div>' +
-      '<div class="card"><div class="searchbar"><input id="searchContact" class="input" type="search" placeholder="Search customer, mobile, company or source" value="' + esc(contactQuery) + '" aria-label="Search customers">' +
+      '<div class="section-heading"><h2>Customers <span class="count">' + data.contacts.length + '</span></h2><div class="row">' + makeButton("export-csv", "Export customers", "secondary small") + '</div></div>' +
+      '<div class="card"><div class="searchbar"><input id="searchContact" class="input" type="search" placeholder="Search by email, name, or company" value="' + esc(contactQuery) + '" aria-label="Search customers">' +
       '<select id="contactFilter" class="select" style="max-width:175px" aria-label="Filter contact status"><option value="all">All statuses</option><option value="review">Needs review</option><option value="consented">Permission confirmed</option><option value="unsubscribed">Unsubscribed</option></select></div>' +
       '<div id="contactRows"></div><p class="help">Manual messages open in your email app. Permission-based automated campaigns exclude unsubscribed and unverified contacts.</p></div>';
   }
@@ -168,7 +168,7 @@
     }
     const rows = filtered.slice(0, 250).map((c, i) => {
       const attr = 'data-email="' + esc(c.email) + '"';
-      const sent = data.logs.filter(l => l.email === c.email && l.result === "accepted").length;
+      const sent = data.logs.filter(l => emailKey(l.email) === c.email && l.result === "accepted").length;
       const action = c.status === "unsubscribed" ? makeButton("re-consent","Re-subscribe","secondary small",attr) :
         makeButton("manual-mail", "✉ Email", "secondary small", attr) +
         (c.status === "review" ? makeButton("mark-consent", "✓ Opt-in", "secondary small", attr) : makeButton("mark-review", "Review", "secondary small", attr)) +
@@ -257,19 +257,13 @@
   function sendView() {
     const ready = eligible().length;
     const c=counts();
-    const smtp = smtpStatus;
-    const badge = smtp?.configured ? '<span class="status consented">SMTP configured</span>' : '<span class="status review">SMTP setup required</span>';
-    return '<div class="grid two">' +
-      '<section class="card"><h3 style="margin:0 0 12px">✉ Mailbox connection</h3><p class="muted">Send through <b>support@abra-logistic.com</b> with the SMTP details in your local <code>.env</code> file. Nothing is hosted on GitHub or Cloudflare.</p>' +
-      '<div class="row" style="margin:15px 0">' + badge + '<span class="pill">' + esc(smtp?.host || "SMTP host not configured") + (smtp?.port ? ":"+smtp.port : "") + '</span></div>' +
-      '<div class="row">' + makeButton("verify-smtp", "Check SMTP connection", "secondary small") + makeButton("test-email", "Send test email", "primary small") + '</div>' +
-      '<p class="help">Connection check logs in to SMTP but does not send. Test email sends one real email to the address set as TEST_EMAIL in your local .env (or SMTP_USER by default).</p>' +
-      '<div class="note warning" style="margin-top:16px"><b>Delivery warning:</b> Your Roundcube screenshot shows multiple mail-delivery failure notices. Before a customer campaign, inspect those bounce messages and the hosting provider’s mail-delivery reports. SMTP acceptance is not delivery.</div></section>' +
-      '<section class="card"><h3 style="margin:0 0 12px">✅ Campaign recipients</h3>' +
+    const mailbox = smtpStatus?.configured ? esc(smtpStatus.from) :
+      'Mailbox setup required · ' + makeButton("go-settings", "Open settings", "secondary small");
+    return '<section class="card"><div class="row between"><h3 style="margin:0">Campaign recipients</h3><span>' + mailbox + '</span></div>' +
       '<p class="muted">Only customers marked permission confirmed are eligible for automated sending. Unsubscribed addresses and already accepted recipients for this campaign are excluded.</p>' +
       '<div class="grid two"><div class="ghost-box"><div class="muted small-text">Eligible to send</div><div style="font-size:29px;font-weight:800">' + ready + '</div></div>' +
       '<div class="ghost-box"><div class="muted small-text">Excluded</div><div style="font-size:29px;font-weight:800">' + (c.total-ready) + '</div></div></div>' +
-      '<div style="margin-top:15px">' + makeButton("go-contacts", "View customer list", "secondary small") + '</div></section></div>' +
+      '<div style="margin-top:15px">' + makeButton("go-contacts", "View customer list", "secondary small") + '</div></section>' +
       '<div class="section-heading"><h2>Campaign sending</h2><span class="pill">Max ' + MAX_RUN + ' per run · at least ' + SEND_INTERVAL / 1000 + ' seconds between sends</span></div>' +
       '<div class="split"><section class="card">' +
       '<div class="field"><label>Campaign name</label><input class="input" value="' + esc(data.campaign.name) + '" readonly></div>' +
@@ -277,8 +271,7 @@
       '<label class="checkrow"><input type="checkbox" id="confirmPermission"><span>I have verified that these specific customers have agreed to receive marketing messages, checked the unsubscribe requests and delivery errors, and previewed the email content.</span></label><br>' +
       '<div class="row">' + makeButton("start-send", "Start email campaign", "primary", running?"disabled":"") +
         makeButton("stop-send", "Stop after current email", "danger",running?"":"disabled") + '</div>' +
-      '<div class="help" id="sendNote" style="margin-top:12px">The Node server reads the local .env automatically. No passwords or mail keys are entered or saved in this page.</div>' +
-      '<hr><div class="note warning">Without a database, incoming unsubscribe replies and bounced addresses must be handled manually in Customers. Server sending limits are temporary safety caps, not a replacement for your hosting provider limits.</div></section>' +
+      '</section>' +
       '<section class="card"><div class="row between"><h3 style="margin:0">Send progress</h3><span class="pill" id="progressLabel">Ready</span></div>' +
       '<p class="help">“Accepted” means the SMTP server accepted the message. It may still bounce later. The webmail Sent folder may not automatically show SMTP API sends.</p>' +
       '<div class="progress-track" style="margin:24px 0 12px"><div class="progress-fill" id="progressFill"></div></div>' +
@@ -313,12 +306,7 @@
       '<div class="grid two" style="gap:13px">' +
       '<div class="ghost-box"><div class="muted small-text">Email account</div><b>' + esc(smtp?.from || "Set SMTP_USER in .env") + '</b></div>' +
       '<div class="ghost-box"><div class="muted small-text">Mail server</div><b>' + esc(smtp?.host || "Not configured") + ':' + esc(smtp?.port || "—") + '</b></div></div>' +
-      '<div class="row" style="margin:16px 0">' +
-      makeButton("refresh-smtp", "Refresh SMTP settings", "secondary small") +
-      makeButton("verify-smtp", "Check connection", "secondary small") +
-      makeButton("test-email", "Send test email", "primary small") + '</div>' +
-      '<div class="note">Open cPanel → Email Accounts → <b>support@abra-logistic.com</b> → Connect Devices. Copy the actual SMTP hostname, port and SSL/TLS settings into .env. The Node server must be restarted after changes.</div>' +
-      '<p class="help">Current test recipient: ' + esc(smtp?.testRecipient || "Not configured") + '. The password is never sent to the browser or stored in localStorage.</p></section>' +
+      '<details style="margin-top:16px"><summary>Mailbox setup instructions</summary><p class="help">Copy the outgoing server settings from cPanel → Email Accounts → Connect Devices into the local .env file, then restart the app.</p></details></section>' +
       '<section class="card"><h3 style="margin-top:0">Campaign preview details</h3><p class="help">These values are only for local preview/personalization. The actual SMTP sender and mandatory footer come from .env.</p><hr>' +
       field("Company name (preview)", "settings.company", s.company) +
       field("Sender name (personalization)", "settings.senderName", s.senderName) +
@@ -327,28 +315,19 @@
       '<hr><h3>Customer and campaign backup</h3><div class="row">' +
       makeButton("export-backup","Download JSON backup","secondary small") +
       '<label class="btn secondary small" for="restoreBackup">Restore backup <input id="restoreBackup" type="file" accept=".json,application/json" style="display:none"></label></div>' +
-      '<p class="help">Backups include customer emails. Keep them private. Previously unsubscribed addresses are preserved on restore.</p></section></div>';
+      '<p class="help">Backups contain customer email addresses. Restoring a backup preserves current unsubscribes.</p>' +
+      makeButton("remove-active", "Clear active contacts", "danger small") + '</section></div>';
   }
   function guideView() {
-    return '<div class="grid two"><section class="card"><h3 style="margin-top:0">Start locally in five steps</h3><ol class="guide-list">' +
-      '<li>Download or clone <b>kothakula-sagar/email-marketing</b> on your computer.</li>' +
-      '<li>Open the project in a terminal and run <code>npm install</code> once.</li>' +
-      '<li>Copy <code>.env.example</code> to <code>.env</code>. Set actual SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and business address.</li>' +
-      '<li>Run <code>npm start</code>, then open <b>http://localhost:3000</b>.</li>' +
-      '<li>In Send center, check SMTP and send one test email. Once that works, import customers and write an email campaign.</li>' +
-      '</ol><div class="note">No account or database. Data lives in the current browser at localhost. Different computers, ports and browsers have different localStorage.</div></section>' +
-      '<section class="card"><h3 style="margin-top:0">Use the website mailbox</h3>' +
-      '<p class="muted">The screenshot is Roundcube Webmail for <b>support@abra-logistic.com</b>. Roundcube is a mail interface; sending from this app uses the same mailbox’s outgoing SMTP service through Node.js.</p>' +
-      '<ol class="guide-list"><li>Find the outgoing server details in cPanel <b>Connect Devices</b> (not just the URL of Roundcube).</li>' +
-      '<li>Set SMTP_PORT=465 and SMTP_SECURE=true for SSL/TLS, <i>if that is what cPanel lists</i>, or use the cPanel supplied settings.</li>' +
-      '<li>Use the mailbox password or the provider-approved mail credential. Do not enter a cPanel dashboard password into this website.</li>' +
-      '<li>If the test fails, check MX/SPF/DKIM/DMARC, mailbox quota, firewall, and bounce reason codes.</li></ol></section></div>' +
-      '<div class="section-heading"><h2>FAQ</h2></div><div class="card">' +
-      '<details open><summary>Does it send from support@abra-logistic.com?</summary><p>Yes, after the mailbox SMTP settings authenticate correctly. The actual sender is SMTP_USER/SENDER_EMAIL from your .env. A successful SMTP request is not a delivery guarantee.</p></details>' +
-      '<details><summary>Are contacts and campaigns saved in a database?</summary><p>No. Customers, subscriptions, campaigns, drafts and send history remain in localStorage for the browser and localhost origin. Use Export backup before changing browsers or clearing site data.</p></details>' +
-      '<details><summary>Will sent messages appear in Roundcube Sent?</summary><p>Not necessarily. SMTP transmits messages but does not save a copy into Roundcube’s IMAP Sent folder. Use the local send log; automatic IMAP Sent-folder copying requires additional configuration.</p></details>' +
-      '<details><summary>How do unsubscribes work?</summary><p>Messages provide a monitored email address for unsubscribe requests. Check that mailbox regularly and manually set those customers to Unsubscribed before the next campaign. Do not re-import opted-out customers as subscribed.</p></details>' +
-      '<details><summary>Can I use this for mass cold emails?</summary><p>The automatic sender only handles verified opt-in recipients. For new business prospects, review individual outreach and comply with the mailbox host’s policies, email laws and any opt-out requests.</p></details></div>';
+    return '<div class="grid two">' +
+      '<section class="card"><h3>Using the workspace</h3><ol class="guide-list">' +
+      '<li>Open Customers and download the import template. Fill in each customer’s email and upload the file.</li>' +
+      '<li>Open Campaigns to write your message and review its preview.</li>' +
+      '<li>Open Send campaign and review the customers who have opted in.</li></ol>' +
+      '<p class="help">Change a customer to Unsubscribed in Customers when they opt out.</p></section>' +
+      '<section class="card"><h3>Keeping your data</h3>' +
+      '<p>Customers, campaigns and send history are saved in this browser. Download a backup before clearing browser data or switching computers.</p>' +
+      makeButton("go-settings", "Open settings", "secondary small") + '</section></div>';
   }
   function parseCSV(input) {
     const csv = String(input || "").replace(/^\uFEFF/, "");
@@ -390,7 +369,7 @@
     const list = [];
     let invalid = 0;
     for (const row of rows) {
-      const email = (row[emailAt] || "").trim().toLowerCase();
+      const email = emailKey(row[emailAt]);
       if (!validEmail(email)) {invalid++; continue;}
       const consent = fieldKey(consentAt < 0 ? "" : row[consentAt]);
       const emailStatus = fieldKey(statusAt < 0 ? "" : row[statusAt]);
@@ -406,6 +385,29 @@
         status, extras, createdAt:new Date().toISOString()});
     }
     return {list, invalid};
+  }
+  function addNewCustomers(existing, incoming) {
+    const customers = new Map();
+    let added = 0;
+    let duplicates = 0;
+    for (const [index, group] of [existing, incoming].entries()) {
+      for (const contact of group) {
+        const email = emailKey(contact?.email);
+        if (!validEmail(email)) continue;
+        const saved = customers.get(email);
+        if (saved) {
+          if (index === 1) duplicates++;
+          if (contact.status === "unsubscribed") saved.status = "unsubscribed";
+          continue;
+        }
+        customers.set(email, {...contact, email});
+        if (index === 1) added++;
+      }
+    }
+    return {contacts: [...customers.values()], added, duplicates};
+  }
+  function uniqueContacts(contacts) {
+    return addNewCustomers(contacts, []).contacts;
   }
   async function importCSV() {
     const file = $("#csvFile") && $("#csvFile").files[0];
@@ -427,28 +429,15 @@
         } else raw = await file.text();
       }
       const {list, invalid} = parseContacts(raw);
-      if (data.contacts.length + list.length > MAX_CONTACTS * 2) throw Error("Too many rows. Keep under 10,000 customers.");
-      const map = new Map(data.contacts.map(c => [c.email,c]));
-      let added=0, updated=0;
-      for (const contact of list) {
-        const old = map.get(contact.email);
-        if (old) {
-          map.set(contact.email,{...old,name:contact.name || old.name,company:contact.company || old.company,
-            phone:contact.phone || old.phone || "",source:contact.source || old.source || "Import",
-            extras:{...(old.extras || {}),...contact.extras},
-            status:old.status === "unsubscribed" || contact.status === "unsubscribed" ? "unsubscribed" :
-              old.status === "consented" || contact.status === "consented" ? "consented" : "review"});
-          updated++;
-        } else {map.set(contact.email,contact);added++;}
-      }
-      if (map.size > MAX_CONTACTS) throw Error("Customer limit is 10,000.");
-      data.contacts = [...map.values()];
-      save();render();
-      toast("Imported " + added + " new customers; updated " + updated + ". " + invalid + " invalid rows skipped.");
+      const {contacts, added, duplicates} = addNewCustomers(data.contacts, list);
+      if (contacts.length > MAX_CONTACTS) throw Error("Customer limit is 10,000.");
+      data.contacts = contacts;
+      importSummary = added + " added · " + duplicates + " duplicates skipped · " + invalid + " invalid emails skipped.";
+      save(); render();
     } catch (error) {toast(error.message || "Customer import failed.",true);}
   }
   function addContact() {
-    const email = ($("#newEmail").value || "").trim().toLowerCase();
+    const email = emailKey($("#newEmail").value);
     if (!validEmail(email)) return toast("Enter a valid email address.", true);
     if (data.contacts.some(x => x.email === email)) return toast("This email already exists. Use its actions instead.", true);
     if (data.contacts.length >= MAX_CONTACTS) return toast("Reached 10,000 contact limit.", true);
@@ -505,15 +494,11 @@
       if (raw.contacts.length > MAX_CONTACTS) throw Error("Too many contacts in backup.");
       const suppressedBefore = data.contacts.filter(c => c.status === "unsubscribed");
       if (!confirm("Restore this backup? Existing contacts and drafts will be replaced, but current opt-outs will remain suppressed.")) return;
-      const optouts = new Set(data.contacts.filter(x => x.status === "unsubscribed").map(x => x.email));
-      data = {version:1, contacts:raw.contacts.filter(x => x && validEmail(x.email)).map(c =>
-        ({...c, status:optouts.has(c.email) || c.status === "unsubscribed" ? "unsubscribed" :
-          c.status === "consented" ? "consented" : "review"})),
+      const restored = uniqueContacts(raw.contacts).map(c => ({
+        ...c, status:["consented", "unsubscribed"].includes(c.status) ? c.status : "review"
+      }));
+      data = {version:1, contacts:addNewCustomers(restored, suppressedBefore).contacts,
         campaign:{...defaultState().campaign,...raw.campaign}, campaigns:Array.isArray(raw.campaigns) ? raw.campaigns : [], settings:{...defaultState().settings,...raw.settings}, logs:raw.logs.slice(-2000)};
-      for (const old of optouts) if (!data.contacts.some(c => c.email === old)) {
-        const original = suppressedBefore.find(c => c.email === old);
-        data.contacts.push(original || {email:old,name:"",company:"",phone:"",source:"Backup",status:"unsubscribed",extras:{}});
-      }
       save(); render(); toast("Backup restored. Existing unsubscribed emails were preserved.");
     } catch (error) {toast(error.message || "Could not restore this backup.", true);}
   }
@@ -556,7 +541,7 @@
     save(); updatePreview();
   }
   function sleep(ms) {return new Promise(resolve => setTimeout(resolve, ms));}
-  async function refreshSmtpStatus(notify=false) {
+  async function refreshSmtpStatus() {
     try {
       const response=await fetch("/api/health",{cache:"no-store"});
       if(!response.ok) throw Error("Local server unavailable.");
@@ -566,30 +551,16 @@
       if(here==="send" || here==="settings") render();
       else {
         $("#endpointDot").className="dot"+(smtpStatus.configured?" on":"");
-        $("#endpointStatus").textContent=smtpStatus.configured?"SMTP configured":"SMTP setup required";
+        $("#endpointStatus").textContent=smtpStatus.configured?"Mailbox configured":"Mailbox setup required";
       }
     } catch (_) {
       smtpStatus={configured:false};
-      if(notify) toast("Local SMTP server not reachable. Run npm start first.",true);
+
     }
-  }
-  async function callLocalSmtp(route,label) {
-    try {
-      const response=await fetch(route,{method:"POST",headers:{"Content-Type":"application/json","X-Abra-Local":"1"},body:"{}",cache:"no-store"});
-      const result=await response.json().catch(()=>({}));
-      if(!response.ok) throw Error(result.error || "SMTP request failed.");
-      toast(result.message || (label+" succeeded"+(result.to?" for "+result.to:"")+"."));
-      await refreshSmtpStatus(false);
-    }catch(e){toast(e.message || "SMTP request failed.",true);}
-  }
-  function verifySmtp(){return callLocalSmtp("/api/test-smtp","SMTP connection");}
-  function sendTestEmail() {
-    if(!confirm("Send one real test email to the TEST_EMAIL address in your local .env (or SMTP_USER if blank)?")) return;
-    return callLocalSmtp("/api/test-email","Test email accepted by SMTP");
   }
   async function startSending() {
     if (running) return;
-    if(!smtpStatus?.configured) return toast("Complete SMTP settings in your local .env, restart npm start and test the connection.",true);
+    if(!smtpStatus?.configured) return toast("Open Settings for mailbox setup instructions.",true);
     const ready=eligible();
     if(!ready.length) return toast("No consent-confirmed unsent customers for this campaign.",true);
     if(!$("#confirmPermission")?.checked) return toast("Confirm customer permission and opt-out review first.",true);
@@ -656,7 +627,7 @@
     if (action === "export-csv") return exportCSV();
     if (action === "export-log") return exportLog();
     if (action === "export-backup") return downloadFile("ABRA_Logistics_Backup-" + new Date().toISOString().slice(0,10) + ".json",JSON.stringify({...data,backedUpAt:new Date().toISOString()},null,2),"application/json;charset=utf-8");
-    if (action === "sample-csv") return downloadFile("ABRA_Logistics_Customer_Import.csv",toCSV([["Import Code","Name","Email","Mobile","Company","Source","Email Status","Consent"],["","Priya Sharma","priya@example.com","9876543210","Example Industries","Lead","Subscribed","no"],["","Ravi Kumar","ravi@example.com","9123456789","Sample Company","Referral","Subscribed","yes"]]),"text/csv;charset=utf-8");
+    if (action === "download-template") return downloadFile("ABRA_Customer_Import_Template.csv",toCSV([IMPORT_HEADERS]),"text/csv;charset=utf-8");
     if (action === "remove-active") {
       if (confirm("Remove all active and review contacts? Unsubscribed contacts will be kept as a suppression list.")) {
         data.contacts = data.contacts.filter(c => c.status === "unsubscribed");save();render();toast("Active contacts removed. Opt-outs preserved.");
@@ -668,9 +639,6 @@
     if (action === "template-followup") return loadTemplate("followup");
     if (action === "insert-token") return appendToken(target.dataset.token);
     if (action === "start-send") return startSending();
-    if (action === "verify-smtp") return verifySmtp();
-    if (action === "test-email") return sendTestEmail();
-    if (action === "refresh-smtp") return refreshSmtpStatus(true);
     if (action === "stop-send") {stopRequested = true; toast("Stopping after the current request."); return;}
   });
   document.addEventListener("input", (event) => {
@@ -690,5 +658,5 @@
     if (target.dataset.field) {saveField(target.dataset.field,target.value);if(page === "compose") updatePreview();}
   });
   render();
-  refreshSmtpStatus(false);
+  refreshSmtpStatus();
 })();

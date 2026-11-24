@@ -27,7 +27,6 @@ const REPLY_TO_EMAIL = (process.env.REPLY_TO_EMAIL || SMTP_USER).trim();
 const UNSUBSCRIBE_EMAIL = (process.env.UNSUBSCRIBE_EMAIL || SMTP_USER).trim();
 const COMPANY_NAME = (process.env.COMPANY_NAME || "ABRA LOGISTIC").trim();
 const BUSINESS_ADDRESS = (process.env.BUSINESS_ADDRESS || "").trim();
-const TEST_EMAIL = (process.env.TEST_EMAIL || SMTP_USER).trim();
 const SEND_INTERVAL_MS = Math.max(8000, Number(process.env.SEND_INTERVAL_MS || 8000));
 const SEND_DAILY_LIMIT = Math.min(100, Math.max(1, Number(process.env.SEND_DAILY_LIMIT || 50)));
 const EMAIL = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
@@ -65,7 +64,6 @@ function missingSmtpFields() {
   if(!isEmail(SENDER_EMAIL)) missing.push("valid SENDER_EMAIL");
   if(!isEmail(REPLY_TO_EMAIL)) missing.push("valid REPLY_TO_EMAIL");
   if(!isEmail(UNSUBSCRIBE_EMAIL)) missing.push("valid UNSUBSCRIBE_EMAIL");
-  if(!isEmail(TEST_EMAIL)) missing.push("valid TEST_EMAIL");
   if(!Number.isInteger(SMTP_PORT) || SMTP_PORT < 1 || SMTP_PORT > 65535) missing.push("valid SMTP_PORT");
   // A different sender can be rejected by mailbox security / SPF / DMARC.
   if(SENDER_EMAIL.toLowerCase() !== SMTP_USER.toLowerCase()) missing.push("SENDER_EMAIL must match SMTP_USER");
@@ -92,7 +90,6 @@ function status() {
     host:SMTP_HOST || "",
     port:SMTP_PORT,
     secure:SMTP_SECURE,
-    testRecipient: isEmail(TEST_EMAIL) ? TEST_EMAIL : "",
     sendIntervalMs:SEND_INTERVAL_MS,
     dailyLimit:SEND_DAILY_LIMIT,
     // No passwords, no database and no recipient information in health.
@@ -186,23 +183,6 @@ app.post("/api/test-smtp",jsonOnly,async(req,res)=>{
   catch(err){console.error("[SMTP] Verification failed:",err?.code || err?.responseCode || "smtp_error");
     res.status(502).json({error:"SMTP connection or authentication failed. Check the cPanel Connect Devices settings, port, SSL/TLS, and mailbox password."});}
 });
-app.post("/api/test-email",jsonOnly,async(req,res)=>{
-  if(missingSmtpFields().length) return res.status(503).json({error:"Configure SMTP in .env first."});
-  const rate=checkRate();
-  if(rate) return res.status(rate.code).json({error:rate.error});
-  inFlight=true;
-  try{
-    const sent=await sendOne({
-      to:TEST_EMAIL,subject:"ABRA Logistics Email Marketing — SMTP Test",
-      html:"<p>This is a test email from your local ABRA Logistics email marketing app.</p>",
-      text:"This is a test email from your local ABRA Logistics email marketing app."
-    });
-    res.json({...sent,to:TEST_EMAIL});
-  }catch(err){console.error("[SMTP] Test failed:",err?.code || err?.responseCode || "smtp_error");
-    res.status(502).json({error:"Test email failed. Inspect SMTP configuration and cPanel mail-delivery reports."});}
-  finally{inFlight=false;}
-});
-
 function csvCell(value){
   const text=String(value??"");
   return '"' + text.replace(/"/g,'""') + '"';
