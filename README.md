@@ -39,7 +39,7 @@ Requires **Node.js 22.12.0 or newer** and npm (use a current Node.js LTS release
        npm start
 
 6. Open http://localhost:3000 in a browser. Leave the terminal window open while using the app.
-7. In **Send center**, select **Check SMTP connection**. After success, use **Send test email** to your own configured TEST_EMAIL before any customer campaign.
+7. Open **Customers** to download the import template, then upload your completed CSV or Excel file. Write your message in **Campaigns** and review the recipients in **Send campaign**.
 
 To stop, press **Ctrl + C** in the terminal. When you open it another day, run **npm start** (npm install is usually needed only after downloading or changing dependencies).
 
@@ -74,7 +74,6 @@ Copy .env.example and replace placeholders locally:
 
     COMPANY_NAME=ABRA LOGISTIC
     BUSINESS_ADDRESS=YOUR_REAL_BUSINESS_POSTAL_ADDRESS
-    TEST_EMAIL=YOUR_OWN_TEST_EMAIL
 
     SEND_INTERVAL_MS=8000
     SEND_DAILY_LIMIT=50
@@ -89,7 +88,8 @@ Save the file, then restart npm start. The real .env is excluded by .gitignore.
 - Add individually: **Name, Email, Mobile, Company, Source, Email subscription**
 - Import customers from **CSV** or **XLSX** (Excel read in memory by the local Node server); paste CSV rows
 - Supports familiar Abra Logistics CRM columns: **Import Code, Name, Email, Mobile, Company, Source, Email Status, Consent**
-- Search and filter, deduplicate by email and export customer CSV
+- Download a blank CSV import template with Email as the first column. Matching email addresses are skipped, ignoring capitalization and surrounding spaces. Explicit opt-outs are still applied.
+- Search, filter and export customers
 - Three statuses: **Needs review, Permission confirmed, Unsubscribed**
 - Preserve previous Unsubscribed statuses when importing more data or restoring a backup
 
@@ -106,7 +106,6 @@ Save the file, then restart npm start. The real .env is excluded by .gitignore.
 - "Stop after current email" control
 - Per-campaign duplicate prevention, SMTP accepted/failed logs and local CSV history export
 - All outgoing messages include business identity, physical mailing address, and manual email unsubscribe instructions
-- Check SMTP Connection and Send Test Email
 
 ### Local storage and backups
 - Customers, subscribed/unsubscribed choices, campaigns, settings and send history are stored in the **browser's localStorage** only.
@@ -124,7 +123,7 @@ Before sending to customers:
 1. Open one of the Mail Delivery System notices in Roundcube.
 2. Find the diagnostic text or SMTP status code, e.g. recipient not found, mailbox full, policy rejected, rate-limited or blocked.
 3. In cPanel, review **Email Deliverability** (SPF, DKIM, DMARC), **Track Delivery**, SMTP quota and any domain/IP blocklists.
-4. Stop or suppress undeliverable addresses, honor unsubscribe replies, and test with an email you control.
+4. Stop or suppress undeliverable addresses, and honor unsubscribe replies.
 5. Start with a very small permission-based campaign. Check for delayed bounces.
 
 **SMTP accepted does not mean delivered.** The local app records the server's accepted response, not inbox placement. Mailbox provider limits are still in force, even if you change the local app's safety caps.
@@ -141,7 +140,7 @@ Before sending to customers:
 
 ## 6. Code and tests
 
-    server.js               Local Express + Nodemailer SMTP service, test endpoints, Excel importer
+    server.js               Local Express + Nodemailer SMTP service, connection diagnostics, Excel importer
     site/index.html         User interface
     site/styles.css         Abra Logistics-themed styling
     site/app.js             Contacts, campaigns, localStorage, email preview, SMTP UI
