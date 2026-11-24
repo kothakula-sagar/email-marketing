@@ -627,7 +627,6 @@
       const response=await fetch("/api/health",{cache:"no-store"});
       if(!response.ok) throw Error("Local server unavailable.");
       smtpStatus=await response.json();
-      if (notify) toast(smtpStatus.configured ? "Local SMTP settings found. Check connection to verify the password." : "Local SMTP not configured. Update .env and restart npm start.",!smtpStatus.configured);
       const here=page;
       if(here==="send" || here==="settings") render();
       else {

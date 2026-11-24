@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 
-function openApp(initialState = null) {
+function openApp(initialState = null, fetch) {
   const source = fs.readFileSync(new URL("../site/app.js",import.meta.url),"utf8");
   const marker = /\s*render\(\);\s*refreshSmtpStatus\(\);\s*\}\)\(\);\s*$/;
   assert.match(source,marker);
   const exposed = source.replace(marker,
-    "\n  globalThis.testHooks = {parseCSV,parseContacts,replaceTokens,toCSV,newCampaign,switchCampaign,plainBody,htmlEmail,importCSV,addContact,restoreBackup,eligible,go,saveField,deleteCampaign,getData:()=>data};\n  render();\n})();");
+    "\n  globalThis.testHooks = {parseCSV,parseContacts,replaceTokens,toCSV,newCampaign,switchCampaign,plainBody,htmlEmail,importCSV,addContact,restoreBackup,eligible,go,saveField,deleteCampaign,refreshSmtpStatus,getData:()=>data};\n  render();\n})();");
   const nodes = new Map();
   const node = selector => {
     if (!nodes.has(selector)) {
@@ -21,7 +21,7 @@ function openApp(initialState = null) {
   };
   let saved = JSON.stringify(initialState);
   const context = {
-    console, Date, Math, JSON, Map, Set, RegExp,
+    console, Date, Math, JSON, Map, Set, RegExp, fetch,
     localStorage:{getItem(){return saved},setItem(_,value){saved=value}},
     document:{querySelector:node,querySelectorAll:()=>[],addEventListener(){}},
     window:{scrollTo(){}},
@@ -159,4 +159,16 @@ test("deleting active and saved campaigns preserves the send log", () => {
   hooks.deleteCampaign("last");
   assert.equal(saved().campaign.audience,"test");
   assert.deepEqual(saved().campaign.testEmails,[]);
+});
+
+test("configured server health enables mailbox status in the browser", async () => {
+  const {hooks,node}=openApp(null,async path => {
+    assert.equal(path,"/api/health");
+    return {ok:true,json:async()=>({configured:true,from:"support@example.com"})};
+  });
+  await hooks.refreshSmtpStatus();
+  assert.equal(node("#endpointStatus").textContent,"Mailbox configured");
+  hooks.go("send");
+  assert.match(node("#view").innerHTML,/support@example\.com/);
+  assert.doesNotMatch(node("#view").innerHTML,/Set up the sending mailbox/);
 });
