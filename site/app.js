@@ -200,12 +200,16 @@
       '<h2>Write your email</h2><span class="pill">Changes save automatically</span></div>' +
       field("Campaign name", "campaign.name", data.campaign.name, "input", "For your team’s reference") +
       field("Email subject", "campaign.subject", data.campaign.subject) +
+      '<div class="field"><label for="modeInput">Message format</label>' +
+      '<select class="select" id="modeInput" data-field="campaign.mode" aria-describedby="formatHelp">' +
+      '<option value="text">Plain text</option><option value="html"' +
+      (data.campaign.mode === "html" ? " selected" : "") + '>HTML source</option></select>' +
+      '<p class="help" id="formatHelp">Choose HTML source to paste an email template into the message box below.</p></div>' +
       '<div class="field"><label for="bodyInput">Message</label><textarea id="bodyInput" class="textarea campaign-message" data-field="campaign.body">' + esc(data.campaign.body) + '</textarea></div>' +
       '<details><summary>Templates and personalization</summary><p>Insert customer details at the cursor.</p><div class="template-tools">' +
       [["Name","{{Name}}"],["Company","{{Company}}"],["Email","{{Email}}"],["Phone","{{Phone}}"],["Source","{{Source}}"],["Sender name","{{sender_name}}"]].map(([label,token]) =>
         makeButton("insert-token", label, "", 'data-token="' + token + '"')).join("") +
-      '</div><div class="field"><label for="modeInput">Message format</label><select class="select" id="modeInput" data-field="campaign.mode"><option value="text">Plain text</option><option value="html"' +
-      (data.campaign.mode === "html" ? " selected" : "") + '>HTML</option></select></div><div class="row">' +
+      '</div><div class="row">' +
       makeButton("template-intro", "Use introduction template", "secondary small") +
       makeButton("template-followup", "Use follow-up template", "secondary small") + '</div></details>' +
       '<div class="campaign-actions">' + makeButton("review-campaign", "Review recipients", "primary") + '</div></section>' +
