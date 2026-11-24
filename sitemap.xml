@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://kothakula-sagar.github.io/email-marketing/</loc></url>
+  <url><loc>https://kothakula-sagar.github.io/email-marketing/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://kothakula-sagar.github.io/email-marketing/smtp-setup/gmail/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://kothakula-sagar.github.io/email-marketing/smtp-setup/outlook/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://kothakula-sagar.github.io/email-marketing/smtp-setup/zoho/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://kothakula-sagar.github.io/email-marketing/smtp-setup/brevo/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://kothakula-sagar.github.io/email-marketing/guides/email-deliverability-checklist/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://kothakula-sagar.github.io/email-marketing/guides/csv-import-format/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://kothakula-sagar.github.io/email-marketing/changelog/</loc><lastmod>2026-11-24</lastmod></url>
 </urlset>
