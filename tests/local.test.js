@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import {once} from "node:events";
 
 process.env.NODE_ENV="test";
 process.env.APP_PORT="3000";
@@ -68,6 +69,7 @@ async function request(server,method,path,payload,headers={}){
 }
 test("Local API has health checks and rejects unauthorized browser mutations",async()=>{
   const server=app.listen(0,"127.0.0.1");
+  await once(server,"listening");
   try{
     const health=await request(server,"GET","/api/health");
     assert.equal(health.status,200);

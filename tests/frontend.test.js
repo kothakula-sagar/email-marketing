@@ -5,7 +5,7 @@ import vm from "node:vm";
 
 function openApp() {
   const source = fs.readFileSync(new URL("../site/app.js",import.meta.url),"utf8");
-  const marker = /\s*render\(\);\s*\}\)\(\);\s*$/;
+  const marker = /\s*render\(\);\s*refreshSmtpStatus\(false\);\s*\}\)\(\);\s*$/;
   assert.match(source,marker);
   const exposed = source.replace(marker,
     "\n  globalThis.testHooks = {parseCSV,parseContacts,replaceTokens,toCSV,newCampaign,switchCampaign,plainBody,htmlEmail,getData:()=>data};\n  render();\n})();");
