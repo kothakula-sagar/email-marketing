@@ -67,3 +67,21 @@
   .send-summary { gap: 6px; }
   .send-summary .ghost-box { padding: 9px; font-size: 12px; }
 }
+
+.campaign-audience {
+  margin: 16px 0 0;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  min-width: 0;
+}
+.campaign-audience legend { font-weight: 750; padding: 0 6px; }
+.campaign-audience .checkrow { margin: 8px 0; overflow-wrap: anywhere; }
+.test-customer-list {
+  list-style: none;
+  padding: 0 0 0 18px;
+  max-height: 180px;
+  overflow: auto;
+}
+.campaign-list li > .row { justify-content: flex-end; flex-shrink: 0; }
+.campaign-list li > .row span { margin: 0; }

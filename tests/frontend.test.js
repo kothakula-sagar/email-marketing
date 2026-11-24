@@ -8,7 +8,7 @@ function openApp(initialState = null) {
   const marker = /\s*render\(\);\s*refreshSmtpStatus\(\);\s*\}\)\(\);\s*$/;
   assert.match(source,marker);
   const exposed = source.replace(marker,
-    "\n  globalThis.testHooks = {parseCSV,parseContacts,replaceTokens,toCSV,newCampaign,switchCampaign,plainBody,htmlEmail,importCSV,addContact,restoreBackup,eligible,go,getData:()=>data};\n  render();\n})();");
+    "\n  globalThis.testHooks = {parseCSV,parseContacts,replaceTokens,toCSV,newCampaign,switchCampaign,plainBody,htmlEmail,importCSV,addContact,restoreBackup,eligible,go,saveField,deleteCampaign,getData:()=>data};\n  render();\n})();");
   const nodes = new Map();
   const node = selector => {
     if (!nodes.has(selector)) {
@@ -126,4 +126,37 @@ test("existing and restored contacts are deduplicated and opt-outs remain suppre
   assert.deepEqual(saved().contacts.map(c=>[c.email,c.status]),[
     ["example@example.com","unsubscribed"],["other@example.com","consented"]
   ]);
+});
+
+test("test audience requires a selected, opted-in tester and separates live send history", () => {
+  const {hooks}=openApp({contacts:[
+    {email:"tester@example.com",status:"consented",testCustomer:true},
+    {email:"other@example.com",status:"consented"},
+    {email:"unselected@example.com",status:"consented",testCustomer:true},
+    {email:"optout@example.com",status:"unsubscribed",testCustomer:true}
+  ],campaign:{id:"campaign-1",testEmails:["tester@example.com","other@example.com","optout@example.com"]},
+  settings:{},logs:[]});
+  const emails=()=>[...hooks.eligible()].map(c=>c.email);
+  assert.deepEqual(emails(),["tester@example.com"]);
+  hooks.getData().logs.push({campaignId:"campaign-1",email:"tester@example.com",audience:"test",result:"accepted"});
+  assert.deepEqual(emails(),[]);
+  hooks.saveField("campaign.body","Revised message");
+  assert.deepEqual(emails(),["tester@example.com"]);
+  hooks.getData().campaign.audience="all";
+  assert.deepEqual(emails(),["tester@example.com","other@example.com","unselected@example.com"]);
+  hooks.getData().logs.push({campaignId:"campaign-1",email:"other@example.com",result:"accepted"});
+  assert.deepEqual(emails(),["tester@example.com","unselected@example.com"]);
+});
+
+test("deleting active and saved campaigns preserves the send log", () => {
+  const {hooks,saved}=openApp({contacts:[],campaign:{id:"active"},settings:{},
+    campaigns:[{id:"first"},{id:"last"}],logs:[{campaignId:"active",result:"accepted"}]});
+  hooks.deleteCampaign("first");
+  assert.deepEqual(saved().campaigns.map(c=>c.id),["last"]);
+  hooks.deleteCampaign("active");
+  assert.equal(saved().campaign.id,"last");
+  assert.equal(saved().logs.length,1);
+  hooks.deleteCampaign("last");
+  assert.equal(saved().campaign.audience,"test");
+  assert.deepEqual(saved().campaign.testEmails,[]);
 });

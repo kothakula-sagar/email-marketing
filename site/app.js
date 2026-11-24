@@ -17,6 +17,8 @@
     campaigns: [],
     campaign: {
       id: id(),
+      audience: "test",
+      testEmails: [],
       name: "ABRA Logistics | B2B Introduction",
       subject: "Freight solutions for {{Company}}",
       mode: "text",
@@ -78,7 +80,11 @@
   }
   function saveField(field, value) {
     if (field.startsWith("settings.")) data.settings[field.slice(9)] = value;
-    else if (field.startsWith("campaign.")) data.campaign[field.slice(9)] = value;
+    else if (field.startsWith("campaign.")) {
+      const key = field.slice(9);
+      if (key !== "name" && data.campaign[key] !== value) markTestRevision();
+      data.campaign[key] = value;
+    }
     save();
   }
   function counts() {
@@ -90,11 +96,26 @@
       accepted: data.logs.filter(x => x.result === "accepted").length
     };
   }
-  function campaignAccepted(email) {
-    return data.logs.some(x => x.result === "accepted" && x.campaignId === data.campaign.id && emailKey(x.email) === emailKey(email));
+  function audience(campaign = data.campaign) {
+    return campaign.audience === "all" ? "all" : "test";
+  }
+  function testCustomers() {
+    return data.contacts.filter(c => c.testCustomer === true && c.status === "consented" && validEmail(c.email));
+  }
+  function markTestRevision() {
+    data.campaign.testRevision = id();
+    progress = {done:0,total:0,accepted:0,failed:0};
   }
   function eligible() {
-    return data.contacts.filter(x => x.status === "consented" && validEmail(x.email) && !campaignAccepted(x.email));
+    const campaign = data.campaign;
+    const mode = audience(campaign);
+    const accepted = new Set(data.logs.filter(log => log.campaignId === campaign.id &&
+      (log.audience || "all") === mode && log.result === "accepted" &&
+      (mode === "all" || log.testRevision === campaign.testRevision)).map(log => emailKey(log.email)));
+    const selected = new Set(Array.isArray(campaign.testEmails) ? campaign.testEmails.map(emailKey) : []);
+    const customers = mode === "test" ? testCustomers().filter(c => selected.has(c.email)) :
+      data.contacts.filter(c => c.status === "consented" && validEmail(c.email));
+    return customers.filter(c => !accepted.has(c.email));
   }
   function render() {
     $("#pageTitle").textContent = pages[page][0];
@@ -154,12 +175,12 @@
         makeButton("add-contact", "Add customer", "primary") + '<p class="help">Only mark permission confirmed when you have actual marketing opt-in evidence.</p></section></div>' +
       '<div class="section-heading"><h2>Customers <span class="count">' + data.contacts.length + '</span></h2><div class="row">' + makeButton("export-csv", "Export customers", "secondary small") + '</div></div>' +
       '<div class="card"><div class="searchbar"><input id="searchContact" class="input" type="search" placeholder="Search by email, name, or company" value="' + esc(contactQuery) + '" aria-label="Search customers">' +
-      '<select id="contactFilter" class="select" style="max-width:175px" aria-label="Filter contact status"><option value="all">All statuses</option><option value="review">Needs review</option><option value="consented">Permission confirmed</option><option value="unsubscribed">Unsubscribed</option></select></div>' +
+      '<select id="contactFilter" class="select" style="max-width:175px" aria-label="Filter contact status"><option value="all">All customers</option><option value="test">Test customers</option><option value="review">Needs review</option><option value="consented">Permission confirmed</option><option value="unsubscribed">Unsubscribed</option></select></div>' +
       '<div id="contactRows"></div><p class="help">Manual messages open in your email app. Permission-based automated campaigns exclude unsubscribed and unverified contacts.</p></div>';
   }
   function renderContactRows() {
     if (!$("#contactRows")) return;
-    const filtered = data.contacts.filter(c => (contactFilter === "all" || c.status === contactFilter) &&
+    const filtered = data.contacts.filter(c => (contactFilter === "all" || (contactFilter === "test" ? c.testCustomer === true : c.status === contactFilter)) &&
       [c.name,c.email,c.phone,c.company,c.source].join(" ").toLowerCase().includes(contactQuery.toLowerCase()));
     const el = $("#contactRows");
     if ($("#contactFilter")) $("#contactFilter").value = contactFilter;
@@ -175,24 +196,34 @@
         (c.status === "review" ? makeButton("mark-consent", "✓ Opt-in", "secondary small", attr) : makeButton("mark-review", "Review", "secondary small", attr)) +
         makeButton("mark-optout", "Opt out", "danger small", attr);
       return '<tr><td>' + (i+1) + '</td><td><div class="person"><span class="avatar">' + esc((c.name || c.email || "?").slice(0,1)) +
-      '</span><div><strong>' + esc(c.name || "Unnamed") + '</strong><small>' + esc(c.email) + '</small></div></div></td>' +
+      '</span><div><strong>' + esc(c.name || "Unnamed") + '</strong><small>' + esc(c.email) + (c.testCustomer === true ? ' · Test customer' : '') + '</small></div></div></td>' +
         '<td>' + esc(c.phone || "—") + '</td><td>' + esc(c.company || "—") + '</td><td>' + esc(c.source || "Import") + '</td>' +
         '<td><span class="status ' + esc(c.status) + '">' + (c.status === "consented" ? "Subscribed*" : c.status === "review" ? "Needs review" : "Unsubscribed") + '</span></td>' +
-        '<td>' + sent + '</td><td><div class="actions">' + action + '</div></td></tr>';
+         '<td>' + sent + '</td><td><div class="actions">' + action +
+        (c.testCustomer === true || c.status === "consented" ? makeButton("toggle-tester",
+          c.testCustomer === true ? "Remove test label" : "Mark as test", "secondary small", attr) : "") + '</div></td></tr>';
     }).join("");
     el.innerHTML = '<div class="table-wrap"><table class="crm-customers"><thead><tr><th>Sl No</th><th>Name & Email</th><th>Mobile</th><th>Company</th><th>Source</th><th>Email status</th><th>Sent</th><th>Actions</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '<p class="help">*Subscribed means verified opt-in in this workspace, not merely a “Subscribed” label imported from the CRM.</p>' +
+      '<p class="help">Mark an opted-in customer as a test customer to make them available in the campaign’s test recipient list.</p>' +
       (filtered.length > 250 ? '<p class="help">Showing first 250 of ' + filtered.length + ' matches. Refine search to find more.</p>' : "");
   }
   function composeView() {
     const campaigns = [data.campaign, ...data.campaigns.slice().reverse()];
     const library = campaigns.map(c => {
       const current = c.id === data.campaign.id;
+      const attr = 'data-campaign="' + esc(c.id) + '"';
       return '<li><div><strong>' + esc(c.name || "Untitled campaign") + '</strong>' +
-        '<span>' + esc(c.subject || "No subject yet") + '</span></div>' +
-        (current ? '<span class="status consented">Editing</span>' :
-          makeButton("open-campaign", "Open", "secondary small", 'data-campaign="' + esc(c.id) + '"')) + '</li>';
+        '<span>' + esc(c.subject || "No subject yet") + '</span></div><div class="row">' +
+        (current ? '<span class="status consented">Editing</span>' : '') +
+        makeButton("open-campaign", "Edit", "secondary small", attr) +
+        makeButton("delete-campaign", "Delete", "danger small", attr) + '</div></li>';
     }).join("");
+    const mode = audience();
+    const chosen = Array.isArray(data.campaign.testEmails) ? data.campaign.testEmails : [];
+    const testers = testCustomers().map(c =>
+      '<li><label class="checkrow"><input type="checkbox" data-test-email="' + esc(c.email) + '"' +
+      (chosen.includes(c.email) ? " checked" : "") + '><span>' + esc(c.name ? c.name + " · " + c.email : c.email) + '</span></label></li>'
+    ).join("");
     return '<div class="stack"><section class="card"><div class="row between">' +
       '<h2>Saved campaigns</h2>' + makeButton("new-campaign", "+ New campaign", "primary") +
       '</div><ul class="campaign-list">' + library + '</ul></section>' +
@@ -212,6 +243,15 @@
       '</div><div class="row">' +
       makeButton("template-intro", "Use introduction template", "secondary small") +
       makeButton("template-followup", "Use follow-up template", "secondary small") + '</div></details>' +
+      '<fieldset class="campaign-audience"><legend>Send to</legend>' +
+      '<label class="checkrow"><input type="radio" name="audience" value="test"' + (mode === "test" ? " checked" : "") +
+      '><span>Selected test customers</span></label>' +
+      '<label class="checkrow"><input type="radio" name="audience" value="all"' + (mode === "all" ? " checked" : "") +
+      '><span>All opted-in customers</span></label>' +
+      (mode === "test" ? (testers ? '<ul class="test-customer-list">' + testers + '</ul>' :
+        '<p class="help">Mark an opted-in customer as a test customer first.</p>') +
+        makeButton("go-contacts", "Manage test customers", "secondary small") +
+        '<p class="help">Editing the subject or message allows you to send a fresh test.</p>' : '') + '</fieldset>' +
       '<div class="campaign-actions">' + makeButton("review-campaign", "Review recipients", "primary") + '</div></section>' +
       '<section class="card"><h2>Email preview</h2><div class="preview"><div class="preview-subject" id="previewSubject"></div>' +
       '<iframe id="previewFrame" title="Email preview" sandbox="" referrerpolicy="no-referrer"></iframe></div></section></div></div>';
@@ -260,7 +300,7 @@
     return text + (includeFooter === false ? '' : footerText(contact));
   }
   function updatePreview() {
-    const sample = data.contacts.find(c => c.status !== "unsubscribed") || {name:"Priya Sharma",email:"priya@example.com",company:"Example Industries",extras:{}};
+    const sample = eligible()[0] || data.contacts.find(c => c.status !== "unsubscribed") || {name:"Priya Sharma",email:"priya@example.com",company:"Example Industries",extras:{}};
     const subject = $("#previewSubject");
     const frame = $("#previewFrame");
     if (subject) subject.textContent = "Subject: " + replaceTokens(data.campaign.subject, sample, false);
@@ -272,17 +312,21 @@
   function sendView() {
     const recipients = eligible();
     const batch = recipients.slice(0, MAX_RUN);
-    const logs = data.logs.filter(log => log.campaignId === data.campaign.id);
-    const accepted = new Set(logs.filter(log => log.result === "accepted").map(log => emailKey(log.email)));
-    const failed = new Set(logs.filter(log => log.result === "failed" && !accepted.has(emailKey(log.email))).map(log => emailKey(log.email)));
+    const mode = audience();
+    const test = mode === "test";
+    const logs = data.logs.filter(log => log.campaignId === data.campaign.id && (log.audience || "all") === mode);
+    const currentLogs = test ? logs.filter(log => log.testRevision === data.campaign.testRevision) : logs;
+    const accepted = new Set(currentLogs.filter(log => log.result === "accepted").map(log => emailKey(log.email)));
+    const failed = new Set(currentLogs.filter(log => log.result === "failed" && !accepted.has(emailKey(log.email))).map(log => emailKey(log.email)));
     const summary = [["Waiting to send", recipients.length], ["Accepted by mailbox", accepted.size], ["Failed recipients", failed.size]]
       .map(([label,total]) => '<div class="ghost-box"><span>' + label + '</span><strong>' + total + '</strong></div>').join("");
     const issue = !campaignReady() ? "Add a campaign name, subject, and message before sending." :
       !smtpStatus?.configured ? "Set up the sending mailbox in Settings." :
-      !batch.length ? "No opted-in customers are waiting for this campaign." : "";
+      !batch.length ? (test ? "Select eligible test customers in Edit campaign, or check the test activity below." :
+        "No opted-in customers are waiting for this campaign.") : "";
     return '<div class="stack"><section class="card"><div class="row between"><h2>' +
       esc(data.campaign.name || "Untitled campaign") + '</h2>' + makeButton("go-compose", "Edit campaign", "secondary small", running ? "disabled" : "") +
-      '</div><p><strong>Subject</strong> · ' + esc(data.campaign.subject || "No subject yet") + '</p>' +
+      '</div><p class="note"><strong>Audience</strong> · ' + (test ? 'Selected test customers only' : 'All opted-in customers') + '</p><p><strong>Subject</strong> · ' + esc(data.campaign.subject || "No subject yet") + '</p>' +
       '<p class="help">From ' + esc(smtpStatus?.from || "Mailbox setup required") + '</p>' +
       '<div class="send-summary">' + summary + '</div></section>' +
       '<div class="split"><section class="card"><h2>Review and send</h2>' +
@@ -293,10 +337,10 @@
       (!running && !issue ? '<label class="checkrow campaign-actions"><input type="checkbox" id="confirmPermission"><span>I reviewed the message and confirmed these customers opted in.</span></label>' : '') +
       '<div class="row campaign-actions">' +
         (running ? makeButton("stop-send", "Stop after current email", "danger") :
-          makeButton("start-send", "Send " + batch.length + (batch.length === 1 ? " email" : " emails"), "primary", issue ? "disabled" : "")) +
+          makeButton("start-send", (test ? "Send test · " : "Send · ") + batch.length + (batch.length === 1 ? " email" : " emails"), "primary", issue ? "disabled" : "")) +
       '</div><div class="progress-track campaign-actions"><div class="progress-fill" id="progressFill"></div></div>' +
       '<p class="help" id="progressLabel" role="status"></p></section>' +
-      '<section class="card"><div class="row between"><h2>Campaign activity</h2>' + makeButton("export-log", "Export campaign log", "secondary small") + '</div>' +
+      '<section class="card"><div class="row between"><h2>' + (test ? "Test activity" : "Campaign activity") + '</h2>' + makeButton("export-log", "Export campaign log", "secondary small") + '</div>' +
       '<p class="help">Accepted means the sending mailbox accepted the email. Delivery can still fail later.</p>' +
       logsHtml(12, logs) + '</section></div></div>';
   }
@@ -499,8 +543,8 @@
     downloadFile("ABRA_Logistics_Customers.csv", toCSV(rows), "text/csv;charset=utf-8");
   }
   function exportLog() {
-    const rows = [["date","email","campaign","result","provider_id","error"],
-      ...data.logs.filter(l => l.campaignId === data.campaign.id).map(l => [l.at,l.email,l.campaignName,l.result,l.providerId || "",l.error || ""])];
+    const rows = [["date","email","campaign","audience","result","provider_id","error"],
+      ...data.logs.filter(l => l.campaignId === data.campaign.id && (l.audience || "all") === audience()).map(l => [l.at,l.email,l.campaignName,l.audience || "all",l.result,l.providerId || "",l.error || ""])];
     downloadFile("ABRA_Logistics_Send_History.csv", toCSV(rows), "text/csv;charset=utf-8");
   }
   async function restoreBackup(file) {
@@ -520,24 +564,41 @@
       save(); render(); toast("Backup restored. Existing unsubscribed emails were preserved.");
     } catch (error) {toast(error.message || "Could not restore this backup.", true);}
   }
+  function blankCampaign() {
+    return {id:id(), name:"", subject:"", mode:"text", body:"", audience:"test", testEmails:[]};
+  }
+  function deleteCampaign(campaignId) {
+    if (running) return;
+    const current = campaignId === data.campaign.id;
+    const campaign = current ? data.campaign : data.campaigns.find(c => c.id === campaignId);
+    if (!campaign || !confirm('Delete "' + (campaign.name || "Untitled campaign") + '"? Send history will be kept.')) return;
+    if (current) {
+      data.campaign = data.campaigns.pop() || blankCampaign();
+      progress = {done:0,total:0,accepted:0,failed:0};
+    } else {
+      data.campaigns = data.campaigns.filter(c => c.id !== campaignId);
+    }
+    save(); render(); toast("Campaign deleted.");
+  }
   function newCampaign() {
     if (running) return toast("Finish sending before switching campaigns.",true);
     if (!Array.isArray(data.campaigns)) data.campaigns = [];
     data.campaigns.push({...data.campaign});
-    data.campaign = {id:id(), name:"", subject:"", mode:"text", body:""};
+    data.campaign = blankCampaign();
     progress = {done:0,total:0,accepted:0,failed:0};
     save(); render(); $("#campaign-name")?.focus?.();
   }
   function switchCampaign(campaignId) {
     if (running) return toast("Finish sending before switching campaigns.",true);
-    if (!campaignId || campaignId === "current") return;
+    if (!campaignId) return;
+    if (campaignId === data.campaign.id) return $("#campaign-name")?.focus?.();
     const selectedIndex = data.campaigns.findIndex(c => c.id === campaignId);
     if (selectedIndex < 0) return toast("Campaign not found.",true);
     const selected = data.campaigns.splice(selectedIndex,1)[0];
     data.campaigns.push({...data.campaign});
     data.campaign = selected;
     progress = {done:0,total:0,accepted:0,failed:0};
-    save();render();toast("Opened campaign: " + data.campaign.name);
+    save();render(); $("#campaign-name")?.focus?.();
   }
   function loadTemplate(which) {
     if (!confirm("Replace the current subject and body with this template?")) return;
@@ -548,12 +609,13 @@
       data.campaign.subject = "Following up with {{company}}";
       data.campaign.body = "Hi {{first_name}},\n\nFollowing up on our earlier conversation. Is there a good time this week to discuss whether we can help {{company}}?\n\nIf this is not relevant, please let me know and I will not follow up.\n\nRegards,\n{{sender_name}}";
     }
-    data.campaign.mode = "text"; save(); render(); toast("Template loaded.");
+    data.campaign.mode = "text"; markTestRevision(); save(); render(); toast("Template loaded.");
   }
   function appendToken(token) {
     const area = $("#bodyInput");
     if (!area) return;
     const start = area.selectionStart, end = area.selectionEnd;
+    markTestRevision();
     data.campaign.body = area.value.slice(0,start) + token + area.value.slice(end);
     area.value = data.campaign.body;
     area.focus(); area.setSelectionRange(start+token.length,start+token.length);
@@ -586,7 +648,8 @@
     if(!$("#confirmPermission")?.checked) return toast("Confirm customer permission and opt-out review first.",true);
     const batch=ready.slice(0,MAX_RUN);
     const campaign={...data.campaign};
-    if(!confirm("This will send "+batch.length+" real emails from your local SMTP mailbox, spaced at least "+(SEND_INTERVAL/1000)+" seconds apart. Are you sure these customers opted in?")) return;
+    const mode = audience(campaign);
+    if (!confirm("Send " + batch.length + " real emails to " + (mode === "test" ? "selected test customers" : "the next batch of opted-in customers") + "?")) return;
     running=true;stopRequested=false;
     progress={done:0,total:batch.length,accepted:0,failed:0};
     render();
@@ -616,7 +679,7 @@
         }
       }catch(e){errorText=String(e.message||"SMTP request failed").slice(0,180);stopRequested=true;}
       data.logs.push({at:new Date().toISOString(),email:contact.email,campaignId:campaign.id,
-        campaignName:campaign.name,result:outcome,error:errorText,providerId});
+        campaignName:campaign.name,audience:mode,testRevision:mode === "test" ? campaign.testRevision : undefined,result:outcome,error:errorText,providerId});
       data.logs=data.logs.slice(-2000);
       save();
       progress.done++;
@@ -660,6 +723,18 @@
       if (!campaignReady()) return toast("Add a campaign name, subject, and message first.", true);
       return go("send");
     }
+    if (action === "toggle-tester") {
+      const contact = findContact(email);
+      if (!contact || (!contact.testCustomer && contact.status !== "consented")) return;
+      contact.testCustomer = contact.testCustomer !== true;
+      if (!contact.testCustomer) {
+        for (const campaign of [data.campaign, ...data.campaigns]) {
+          if (Array.isArray(campaign.testEmails)) campaign.testEmails = campaign.testEmails.filter(address => emailKey(address) !== contact.email);
+        }
+      }
+      save(); renderContactRows(); return;
+    }
+    if (action === "delete-campaign") return deleteCampaign(target.dataset.campaign);
     if (action === "open-campaign") return switchCampaign(target.dataset.campaign);
     if (action === "new-campaign") return newCampaign();
     if (action === "template-intro") return loadTemplate("intro");
@@ -687,6 +762,21 @@
   document.addEventListener("change", (event) => {
     const target = event.target;
     if (target.id === "contactFilter") {contactFilter = target.value;renderContactRows();}
+    if (!running && target.name === "audience") {
+      if (target.value === "all" && !confirm("Switch to all opted-in customers? You’ll review the next batch before sending.")) {
+        render(); return;
+      }
+      data.campaign.audience = target.value === "all" ? "all" : "test";
+      progress = {done:0,total:0,accepted:0,failed:0};
+      save(); render(); return;
+    }
+    if (!running && target.dataset.testEmail) {
+      const selected = new Set(Array.isArray(data.campaign.testEmails) ? data.campaign.testEmails : []);
+      const email = target.dataset.testEmail;
+      if (target.checked) selected.add(email); else selected.delete(email);
+      data.campaign.testEmails = [...selected];
+      save(); updatePreview(); return;
+    }
     if (target.id === "restoreBackup") restoreBackup(target.files[0]);
     if (!running && target.dataset.field) {saveField(target.dataset.field,target.value);if(page === "compose") updatePreview();}
   });
