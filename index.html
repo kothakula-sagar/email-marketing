@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Free Email Marketing Tools for Windows | Email Campaign Studio</title>
+  <meta name="description" content="Download free email marketing tools for Windows. Import CSV or Excel contacts, write HTML emails, send test campaigns, and track results with your own SMTP mailbox.">
+  <link rel="canonical" href="https://kothakula-sagar.github.io/email-marketing/">
+  <meta property="og:title" content="Free Email Marketing Tools for Windows">
+  <meta property="og:description" content="Manage contacts, preview emails, and send opt-in campaigns from your Windows PC.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://kothakula-sagar.github.io/email-marketing/">
+  <meta name="theme-color" content="#f6f3ea">
+  <link rel="stylesheet" href="landing.css">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"SoftwareApplication","name":"Email Campaign Studio","applicationCategory":"BusinessApplication","operatingSystem":"Windows","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"url":"https://kothakula-sagar.github.io/email-marketing/","downloadUrl":"https://github.com/kothakula-sagar/email-marketing/archive/6973c4bbc4bdaf4209d26d1589e7a68cb249e2b0.zip"}
+  </script>
+</head>
+<body>
+  <header class="wrap top">
+    <a href="./" class="brand"><span aria-hidden="true">✉</span> Email Campaign Studio</a>
+    <nav aria-label="Main navigation"><a href="#features">Features</a><a href="#install">Installation</a></nav>
+  </header>
+  <main>
+    <section class="wrap hero">
+      <div>
+        <h1>Free email marketing tools for Windows</h1>
+        <p>Import your contacts, design your email, and send campaigns to customers who have opted in. The app runs on your PC and sends through your own SMTP mailbox.</p>
+        <div class="actions">
+          <a class="button" href="https://github.com/kothakula-sagar/email-marketing/archive/6973c4bbc4bdaf4209d26d1589e7a68cb249e2b0.zip">Download Windows ZIP <span aria-hidden="true">↓</span></a>
+          <a href="#install">Read the setup guide →</a>
+        </div>
+        <small>Free download · Requires Node.js 22.12+ and an SMTP mailbox</small>
+      </div>
+      <div class="preview" aria-label="Illustration of the campaign review screen">
+        <div class="window"><span>Campaign workspace</span><b>Example</b></div>
+        <div class="mock-body">
+          <p class="label">CAMPAIGN REVIEW</p>
+          <h2>Monthly newsletter</h2>
+          <p class="audience">Audience · Selected test customers</p>
+          <div class="tiles"><div><span>Waiting</span><strong>3</strong></div><div><span>Accepted</span><strong>0</strong></div><div><span>Failed</span><strong>0</strong></div></div>
+          <div class="mock-footer"><span>Review recipients before sending</span><strong>Send test · 3 emails</strong></div>
+        </div>
+      </div>
+    </section>
+    <section class="wrap section" id="features">
+      <h2>From contact list to first campaign</h2>
+      <div class="features">
+        <article><h3>Import and organize</h3><p>Use the blank CSV template or upload an Excel file. The app skips duplicate email addresses and keeps unsubscribe records.</p></article>
+        <article><h3>Write and preview</h3><p>Create a plain-text email or paste an HTML template. Preview the message and personalize it with customer details.</p></article>
+        <article><h3>Test and track</h3><p>Send to selected test contacts first. Review the results, then switch to your opted-in audience when ready.</p></article>
+      </div>
+    </section>
+    <section class="setup" id="install">
+      <div class="wrap setup-grid">
+        <div><h2>Install on Windows</h2><p>Allow a few minutes for first-time setup. You’ll need the outgoing mail settings and credentials for a mailbox you’re authorized to use.</p></div>
+        <ol>
+          <li><h3>Open the project folder</h3><p>Install <a href="https://nodejs.org/en/download">Node.js 22.12 or newer</a>, extract the ZIP, and open the folder containing <code>package.json</code>. In File Explorer, press <kbd>Alt+D</kbd>, type <code>cmd</code>, and press Enter.</p></li>
+          <li><h3>Create and edit your settings file</h3><pre><code>if not exist .env copy .env.example .env
+notepad .env</code></pre><p>Enter your provider’s SMTP host, port, encryption setting, mailbox address and password. Replace the example sender, reply-to, unsubscribe, company and business address details with your own. Save the file and keep it private.</p></li>
+          <li><h3>Install dependencies and start the app</h3><pre><code>npm install
+npm start</code></pre><p>Keep Command Prompt open and visit <a href="http://localhost:3000">localhost:3000</a> on that PC. When you see <strong>Mailbox configured</strong>, review your selected test recipients before sending.</p></li>
+        </ol>
+      </div>
+    </section>
+    <section class="wrap section faq">
+      <h2>Common questions</h2>
+      <details><summary>Is the app free?</summary><p>Yes, the app is free to download and use. Any fees or sending limits depend on the mailbox provider you choose.</p></details>
+      <details><summary>Where are my contacts stored?</summary><p>Contacts, campaigns, and send history are saved in your local browser profile. Use the backup feature before switching computers or clearing browser data.</p></details>
+      <details><summary>Does a ZIP download install the app automatically?</summary><p>Extract the ZIP and follow the commands in the Windows installation guide to run the app.</p></details>
+    </section>
+  </main>
+  <footer class="wrap foot"><span>Email Campaign Studio</span><a href="https://github.com/kothakula-sagar/email-marketing">View repository on GitHub ↗</a></footer>
+</body>
+</html>
